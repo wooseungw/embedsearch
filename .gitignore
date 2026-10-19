@@ -1,0 +1,11 @@
+.DS_Store
+.build*/
+build/
+DerivedData/
+*.xcodeproj/
+.swiftpm/
+tools/parity/.venv/
+tools/parity/__pycache__/
+.omc/
+vendor/
+*.profraw

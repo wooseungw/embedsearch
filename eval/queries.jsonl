@@ -1,0 +1,120 @@
+{"q":"계산기","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.calculator"}]}
+{"q":"calculator","lang":"en","type":"crosslang","expect":[{"id":"app:com.apple.calculator"}]}
+{"q":"safari","lang":"en","type":"exact","expect":[{"id":"app:com.apple.Safari"}]}
+{"q":"카카오톡","lang":"ko","type":"exact","expect":[{"id":"app:com.kakao.KakaoTalkMac"}]}
+{"q":"kakaotalk","lang":"en","type":"crosslang","expect":[{"id":"app:com.kakao.KakaoTalkMac"}]}
+{"q":"크롬","lang":"ko","type":"crosslang","expect":[{"id":"app:com.google.Chrome"}]}
+{"q":"vscode","lang":"en","type":"exact","expect":[{"id":"app:com.microsoft.VSCode"}]}
+{"q":"터미널","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.Terminal"}]}
+{"q":"activity monitor","lang":"en","type":"crosslang","expect":[{"id":"app:com.apple.ActivityMonitor"}]}
+{"q":"활성 상태 보기","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.ActivityMonitor"}]}
+{"q":"시스템 설정","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.systempreferences"}]}
+{"q":"system settings","lang":"en","type":"crosslang","expect":[{"id":"app:com.apple.systempreferences"}]}
+{"q":"finder","lang":"en","type":"exact","expect":[{"id":"app:com.apple.finder"}]}
+{"q":"메모","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.Notes"}]}
+{"q":"notes","lang":"en","type":"crosslang","expect":[{"id":"app:com.apple.Notes"}]}
+{"q":"미리보기","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.Preview"}]}
+{"q":"xcode","lang":"en","type":"exact","expect":[{"id":"app:com.apple.dt.Xcode"}]}
+{"q":"엑셀","lang":"ko","type":"crosslang","expect":[{"id":"app:com.microsoft.Excel"}]}
+{"q":"notion","lang":"en","type":"exact","expect":[{"id":"app:notion.id"}]}
+{"q":"디스코드","lang":"ko","type":"crosslang","expect":[{"id":"app:com.hnc.Discord"}]}
+{"q":"사진","lang":"ko","type":"exact","expect":[{"id":"app:com.apple.Photos"}]}
+{"q":"앱스토어","lang":"ko","type":"crosslang","expect":[{"id":"app:com.apple.AppStore"}]}
+{"q":"keychain","lang":"en","type":"prefix","expect":[{"id":"app:com.apple.keychainaccess"}]}
+{"q":"계산","lang":"ko","type":"prefix","expect":[{"id":"app:com.apple.calculator"}]}
+{"q":"saf","lang":"en","type":"prefix","expect":[{"id":"app:com.apple.Safari"}]}
+{"q":"카카","lang":"ko","type":"prefix","expect":[{"id":"app:com.kakao.KakaoTalkMac"}]}
+{"q":"시스템 설","lang":"ko","type":"prefix","expect":[{"id":"app:com.apple.systempreferences"}]}
+{"q":"term","lang":"en","type":"prefix","expect":[{"id":"app:com.apple.Terminal"}]}
+{"q":"캘린","lang":"ko","type":"prefix","expect":[{"id":"app:com.apple.iCal"}]}
+{"q":"obsi","lang":"en","type":"prefix","expect":[{"id":"app:md.obsidian"}]}
+{"q":"활성","lang":"ko","type":"prefix","expect":[{"id":"app:com.apple.ActivityMonitor"}]}
+{"q":"calcualtor","lang":"en","type":"typo","expect":[{"id":"app:com.apple.calculator"}]}
+{"q":"safri","lang":"en","type":"typo","expect":[{"id":"app:com.apple.Safari"}]}
+{"q":"terminl","lang":"en","type":"typo","expect":[{"id":"app:com.apple.Terminal"}]}
+{"q":"게산기","lang":"ko","type":"typo","expect":[{"id":"app:com.apple.calculator"}]}
+{"q":"카카오톨","lang":"ko","type":"typo","expect":[{"id":"app:com.kakao.KakaoTalkMac"}]}
+{"q":"blutooth","lang":"en","type":"typo","expect":[{"idPrefix":"setting:com.apple.BluetoothSettings#"}]}
+{"q":"dispaly settings","lang":"en","type":"typo","expect":[{"idPrefix":"setting:com.apple.Displays-Settings.extension#"}]}
+{"q":"obsidain","lang":"en","type":"typo","expect":[{"id":"app:md.obsidian"}]}
+{"q":"디스플래이","lang":"ko","type":"typo","expect":[{"idPrefix":"setting:com.apple.Displays-Settings.extension#"}]}
+{"q":"ㄱㅅㄱ","lang":"ko","type":"chosung","expect":[{"id":"app:com.apple.calculator"}]}
+{"q":"ㅋㅋㅇㅌ","lang":"ko","type":"chosung","expect":[{"id":"app:com.kakao.KakaoTalkMac"}]}
+{"q":"ㅅㅅㅌㅅㅈ","lang":"ko","type":"chosung","expect":[{"id":"app:com.apple.systempreferences"}]}
+{"q":"ㅌㅁㄴ","lang":"ko","type":"chosung","expect":[{"id":"app:com.apple.Terminal"}]}
+{"q":"ㅎㅈㅌ ㅂㅇㄱ","lang":"ko","type":"chosung","expect":[{"id":"cmd:empty-trash"}]}
+{"q":"ㄷㅅㅍㄹㅇ","lang":"ko","type":"chosung","expect":[{"idPrefix":"setting:com.apple.Displays-Settings.extension#"}]}
+{"q":"블루투스","lang":"ko","type":"crosslang","expect":[{"idPrefix":"setting:com.apple.BluetoothSettings#"}]}
+{"q":"bluetooth","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.BluetoothSettings#"}]}
+{"q":"wi-fi","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.wifi-settings-extension#"}]}
+{"q":"와이파이","lang":"ko","type":"crosslang","expect":[{"idPrefix":"setting:com.apple.wifi-settings-extension#"}]}
+{"q":"디스플레이 밝기","lang":"ko","type":"exact","expect":[{"id":"setting:com.apple.Displays-Settings.extension#ambienceSection"}]}
+{"q":"display brightness","lang":"en","type":"exact","expect":[{"id":"setting:com.apple.Displays-Settings.extension#ambienceSection"}]}
+{"q":"다크 모드","lang":"ko","type":"exact","expect":[{"id":"cmd:toggle-dark-mode"},{"idPrefix":"setting:com.apple.Appearance-Settings.extension#"}]}
+{"q":"dark mode","lang":"en","type":"exact","expect":[{"id":"cmd:toggle-dark-mode"},{"idPrefix":"setting:com.apple.Appearance-Settings.extension#"}]}
+{"q":"전체 디스크 접근 권한","lang":"ko","type":"exact","expect":[{"id":"setting:com.apple.settings.PrivacySecurity.extension#Privacy_AllFiles"}]}
+{"q":"full disk access","lang":"en","type":"exact","expect":[{"id":"setting:com.apple.settings.PrivacySecurity.extension#Privacy_AllFiles"}]}
+{"q":"화면 녹화 권한","lang":"ko","type":"paraphrase","expect":[{"id":"setting:com.apple.settings.PrivacySecurity.extension#Privacy_ScreenCapture"}]}
+{"q":"screen recording permission","lang":"en","type":"paraphrase","expect":[{"id":"setting:com.apple.settings.PrivacySecurity.extension#Privacy_ScreenCapture"}]}
+{"q":"손쉬운 사용","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.Accessibility-Settings.extension#"}]}
+{"q":"accessibility","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.Accessibility-Settings.extension#"},{"id":"setting:com.apple.settings.PrivacySecurity.extension#Privacy_Accessibility"}]}
+{"q":"키보드 단축키","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.Keyboard-Settings.extension#","title":"키보드 단축키"}]}
+{"q":"배경화면","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.Wallpaper-Settings.extension#"}]}
+{"q":"wallpaper","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.Wallpaper-Settings.extension#"}]}
+{"q":"방화벽","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.Network-Settings.extension#Firewall"}]}
+{"q":"firewall","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.Network-Settings.extension#Firewall"}]}
+{"q":"핫 코너","lang":"ko","type":"exact","expect":[{"id":"setting:com.apple.Desktop-Settings.extension#HotCorners"}]}
+{"q":"night shift","lang":"en","type":"exact","expect":[{"id":"setting:com.apple.Displays-Settings.extension#nightShiftSection"}]}
+{"q":"나이트 시프트","lang":"ko","type":"crosslang","expect":[{"id":"setting:com.apple.Displays-Settings.extension#nightShiftSection"}]}
+{"q":"트랙패드 제스처","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.Trackpad-Settings.extension#trackpadTab"}]}
+{"q":"software update","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.Software-Update-Settings.extension#"}]}
+{"q":"로그인 항목","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.LoginItems-Settings.extension#"}]}
+{"q":"language and region","lang":"en","type":"exact","expect":[{"idPrefix":"setting:com.apple.Localization-Settings.extension#"}]}
+{"q":"저장 공간","lang":"ko","type":"exact","expect":[{"idPrefix":"setting:com.apple.settings.Storage#"}]}
+{"q":"저전력 모드","lang":"ko","type":"exact","expect":[{"id":"setting:com.apple.Battery-Settings.extension#currentSource"}]}
+{"q":"low power mode","lang":"en","type":"exact","expect":[{"id":"setting:com.apple.Battery-Settings.extension#currentSource"}]}
+{"q":"화면 밝기 조절","lang":"ko","type":"paraphrase","expect":[{"idPrefix":"setting:com.apple.Displays-Settings.extension#ambienceSection"}]}
+{"q":"인터넷 연결 안 될 때","lang":"ko","type":"paraphrase","expect":[{"idPrefix":"setting:com.apple.Network-Settings.extension#"},{"idPrefix":"setting:com.apple.wifi-settings-extension#"},{"id":"app:com.apple.wifi.diagnostics"}]}
+{"q":"turn off bluetooth","lang":"en","type":"intent","expect":[{"idPrefix":"setting:com.apple.BluetoothSettings#"}]}
+{"q":"메모 앱","lang":"ko","type":"intent","expect":[{"id":"app:com.apple.Notes"}]}
+{"q":"스크린샷 찍기","lang":"ko","type":"intent","expect":[{"id":"cmd:screenshot"},{"id":"app:com.apple.screenshot.launcher"}]}
+{"q":"take a screenshot","lang":"en","type":"intent","expect":[{"id":"cmd:screenshot"},{"id":"app:com.apple.screenshot.launcher"}]}
+{"q":"computer sleep","lang":"en","type":"intent","expect":[{"id":"cmd:sleep"}]}
+{"q":"컴퓨터 재우기","lang":"ko","type":"intent","expect":[{"id":"cmd:sleep"}]}
+{"q":"화면 잠그기","lang":"ko","type":"intent","expect":[{"id":"cmd:lock-screen"}]}
+{"q":"lock my mac","lang":"en","type":"intent","expect":[{"id":"cmd:lock-screen"}]}
+{"q":"휴지통 비우기","lang":"ko","type":"exact","expect":[{"id":"cmd:empty-trash"}]}
+{"q":"empty the trash","lang":"en","type":"intent","expect":[{"id":"cmd:empty-trash"}]}
+{"q":"소리 끄기","lang":"ko","type":"intent","expect":[{"id":"cmd:toggle-mute"},{"id":"setting:com.apple.Sound-Settings.extension#mute"}]}
+{"q":"볼륨 키우기","lang":"ko","type":"paraphrase","expect":[{"id":"cmd:volume-up"}]}
+{"q":"재부팅","lang":"ko","type":"paraphrase","expect":[{"id":"cmd:restart"}]}
+{"q":"shut down","lang":"en","type":"exact","expect":[{"id":"cmd:shut-down"}]}
+{"q":"다운로드 폴더","lang":"ko","type":"prefix","expect":[{"id":"cmd:open-downloads"}]}
+{"q":"show hidden files","lang":"en","type":"intent","expect":[{"id":"cmd:toggle-hidden-files"}]}
+{"q":"음악 듣기","lang":"ko","type":"paraphrase","expect":[{"id":"app:com.apple.Music"}]}
+{"q":"할 일 목록","lang":"ko","type":"paraphrase","expect":[{"id":"app:com.apple.reminders"}]}
+{"q":"to-do list","lang":"en","type":"paraphrase","expect":[{"id":"app:com.apple.reminders"}]}
+{"q":"web browser","lang":"en","type":"paraphrase","expect":[{"id":"app:com.apple.Safari"},{"id":"app:com.google.Chrome"},{"id":"app:com.openai.atlas"}]}
+{"q":"작업 관리자","lang":"ko","type":"paraphrase","expect":[{"id":"app:com.apple.ActivityMonitor"}]}
+{"q":"압축 풀기","lang":"ko","type":"paraphrase","expect":[{"id":"app:com.apple.archiveutility"},{"id":"app:cx.c3.theunarchiver"}]}
+{"q":"video call","lang":"en","type":"paraphrase","expect":[{"id":"app:com.apple.FaceTime"},{"id":"app:us.zoom.xos"},{"id":"app:Cisco-Systems.Spark"}]}
+{"q":"번역기","lang":"ko","type":"paraphrase","expect":[{"id":"app:com.linguee.DeepLCopyTranslator"}]}
+{"q":"check cpu usage","lang":"en","type":"paraphrase","expect":[{"id":"app:com.apple.ActivityMonitor"}]}
+{"q":"Wi-Fi 설정","lang":"mixed","type":"intent","expect":[{"idPrefix":"setting:com.apple.wifi-settings-extension#"}]}
+{"q":"Bluetooth 끄기","lang":"mixed","type":"intent","expect":[{"idPrefix":"setting:com.apple.BluetoothSettings#"}]}
+{"q":"Safari 앱","lang":"mixed","type":"intent","expect":[{"id":"app:com.apple.Safari"}]}
+{"q":"Chrome 열기","lang":"mixed","type":"intent","expect":[{"id":"app:com.google.Chrome"}]}
+{"q":"VPN 설정","lang":"mixed","type":"intent","expect":[{"idPrefix":"setting:com.apple.NetworkExtensionSettingsUI.NESettingsUIExtension#"},{"idPrefix":"setting:com.apple.Network-Settings.extension#VPN"}]}
+{"q":"Dock 재시작","lang":"mixed","type":"exact","expect":[{"id":"cmd:restart-dock"}]}
+{"q":"Finder 다시 시작","lang":"mixed","type":"paraphrase","expect":[{"id":"cmd:restart-finder"}]}
+{"q":"AirDrop 설정","lang":"mixed","type":"intent","expect":[{"id":"setting:com.apple.AirDrop-Handoff-Settings.extension#AirDrop_Handoff"},{"id":"setting:com.apple.AirDrop-Handoff-Settings.extension#root"}]}
+{"q":"Touch ID 설정","lang":"mixed","type":"intent","expect":[{"idPrefix":"setting:com.apple.Touch-ID-Settings.extension#"}]}
+{"q":"Spotlight 검색 설정","lang":"mixed","type":"intent","expect":[{"idPrefix":"setting:com.apple.Spotlight-Settings.extension#"}]}
+{"q":"iPhone 미러링","lang":"mixed","type":"exact","expect":[{"id":"app:com.apple.ScreenContinuity"},{"id":"setting:com.apple.AirDrop-Handoff-Settings.extension#iPhone_Mirroring"}]}
+{"q":"dark mode 켜기","lang":"mixed","type":"intent","expect":[{"id":"cmd:toggle-dark-mode"},{"idPrefix":"setting:com.apple.Appearance-Settings.extension#"}]}
+{"q":"pdf 보기","lang":"mixed","type":"paraphrase","expect":[{"id":"app:com.apple.Preview"}]}
+{"q":"카톡 열어줘","lang":"ko","type":"intent","expect":[{"id":"app:com.kakao.KakaoTalkMac"}]}
+{"q":"노래켜줘","lang":"ko","type":"exact","expect":[{"id":"shortcut:노래켜줘"}]}
+{"q":"GIF 만들기","lang":"mixed","type":"exact","expect":[{"id":"shortcut:GIF 만들기"}]}
+{"q":"Time Machine 백업","lang":"mixed","type":"intent","expect":[{"id":"app:com.apple.backup.launcher"},{"idPrefix":"setting:com.apple.Time-Machine-Settings.extension#"}]}
+{"q":"알림 설정","lang":"ko","type":"intent","expect":[{"idPrefix":"setting:com.apple.Notifications-Settings.extension#"}]}

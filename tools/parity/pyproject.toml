@@ -1,0 +1,18 @@
+[project]
+name = "embedsearch-parity"
+version = "0.1.0"
+description = "fp32 sentence-transformers reference vectors for EmbedSearch MLX parity tests"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "sentence-transformers>=6.1.0",
+    "transformers>=5.19.0",
+    "torch>=2.8",
+    "numpy",
+    # sentence-transformers builds the EmbeddingGemma2 processor even for text-only use;
+    # it imports PIL and the Gemma 4 image processor (torchvision).
+    "pillow",
+    "torchvision",
+]
+
+[tool.uv]
+package = false
