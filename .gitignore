@@ -9,3 +9,4 @@ tools/parity/__pycache__/
 .omc/
 vendor/
 *.profraw
+eval/personal/

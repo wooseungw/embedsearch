@@ -14,9 +14,10 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "15.0"
     ARCHS: arm64
     ONLY_ACTIVE_ARCH: YES
-    DEVELOPMENT_TEAM: 42NYL28WUC
+    # Ad hoc so a fresh clone builds without an Apple account; scripts/build-app.sh signs with
+    # your Apple Development identity (and hardened runtime) when the keychain has one.
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "Apple Development"
+    CODE_SIGN_IDENTITY: "-"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
@@ -68,7 +69,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.seungwoo.embedsearch
         PRODUCT_NAME: EmbedSearch
-        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_HARDENED_RUNTIME: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
         COMBINE_HIDPI_IMAGES: YES
