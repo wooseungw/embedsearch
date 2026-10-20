@@ -10,7 +10,7 @@
 
 ## 설치 (빌드된 앱)
 
-1. [Releases](https://github.com/wooseungw/embedsearch/releases)에서 `EmbedSearch-<버전>-arm64.zip`을 받아 풀고, `EmbedSearch.app`을 `/Applications`나 `~/Applications`로 옮깁니다.
+1. **[EmbedSearch.dmg 다운로드](https://github.com/wooseungw/embedsearch/releases/latest/download/EmbedSearch.dmg)** — 열고 `EmbedSearch`를 옆의 `Applications` 폴더로 끌어 놓습니다. 이전 버전은 [Releases](https://github.com/wooseungw/embedsearch/releases)에 있습니다.
 2. 처음 열면 macOS가 실행을 막습니다. 앱이 Apple 공증을 받지 않았기 때문입니다. 한 번만 풀어주면 됩니다:
    - **시스템 설정 → 개인정보 보호 및 보안**에서 맨 아래 EmbedSearch 항목의 **그래도 열기**를 누릅니다. (macOS 15부터는 Finder에서 우클릭 → 열기로는 통과되지 않습니다.)
    - 또는 터미널에서:
@@ -38,7 +38,7 @@ scripts/install.sh       # ~/Applications에 설치하고 실행
 ```
 
 - 키체인에 Apple Development 인증서가 있으면 그걸로 서명하고, 없으면 ad hoc으로 서명합니다. ad hoc 서명은 빌드할 때마다 macOS가 권한을 다시 묻습니다. `ADHOC=1`을 주면 인증서가 있어도 ad hoc으로 서명합니다.
-- `scripts/package-release.sh`는 Releases에 올릴 zip을 만듭니다.
+- `scripts/package-release.sh`는 Releases에 올릴 dmg를 만듭니다.
 - 설계와 모듈 구조는 [`docs/DESIGN.md`](docs/DESIGN.md)에 있습니다.
 
 ## 라이선스
