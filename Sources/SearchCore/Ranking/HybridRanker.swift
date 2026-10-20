@@ -12,10 +12,13 @@ public enum HybridRanker {
         public let cosine: Double
         /// File hits: the hubness-corrected score the file list is ranked by (see `ChunkIndex`).
         public let score: Double?
-        public init(itemID: String, cosine: Double, score: Double? = nil) {
+        /// File hits: the page the best chunk starts on (see `ScoreBreakdown.page`).
+        public let page: Int?
+        public init(itemID: String, cosine: Double, score: Double? = nil, page: Int? = nil) {
             self.itemID = itemID
             self.cosine = cosine
             self.score = score
+            self.page = page
         }
     }
 
@@ -24,9 +27,12 @@ public enum HybridRanker {
         public let itemID: String
         /// IDF-weighted share of the query's tokens in the file's best chunk, 0…1.
         public let coverage: Double
-        public init(itemID: String, coverage: Double) {
+        /// The page that chunk starts on.
+        public let page: Int?
+        public init(itemID: String, coverage: Double, page: Int? = nil) {
             self.itemID = itemID
             self.coverage = coverage
+            self.page = page
         }
     }
 
@@ -87,6 +93,8 @@ public enum HybridRanker {
             var fileMargin: Double = 0
             var keywordRank: Int?
             var keywordCoverage: Double?
+            var filePage: Int?
+            var keywordPage: Int?
             var cosine: Double?
             var frecency: Double = 0
             var memory: Double = 0
@@ -133,12 +141,14 @@ public enum HybridRanker {
                 let s = slot(hit.itemID)
                 accs[s].fileRank = i + 1
                 accs[s].fileMargin = max(0, (hit.score ?? config.minFileScore) - config.minFileScore)
+                accs[s].filePage = hit.page
                 if accs[s].cosine == nil { accs[s].cosine = hit.cosine }
             }
             for (i, hit) in fileKeyword.prefix(max(0, config.fileKeywordCandidates)).enumerated() {
                 let s = slot(hit.itemID)
                 accs[s].keywordRank = i + 1
                 accs[s].keywordCoverage = hit.coverage
+                accs[s].keywordPage = hit.page
             }
         }
         if mode != .semantic, config.useUsageSignals {
@@ -210,7 +220,8 @@ public enum HybridRanker {
             return Ranked(itemID: a.id, score: scores[s], signals: Signals.sets[Int(signalBits[s])],
                           breakdown: ScoreBreakdown(lexicalRank: a.lexRank, lexicalScore: a.lexScore, semanticRank: a.semRank ?? a.fileRank,
                                                     cosine: a.cosine, keywordRank: a.keywordRank, keywordCoverage: a.keywordCoverage,
-                                                    frecencyBoost: a.frecency + a.memory, final: scores[s]))
+                                                    frecencyBoost: a.frecency + a.memory, final: scores[s],
+                                                    page: a.keywordPage ?? a.filePage))
         }
     }
 

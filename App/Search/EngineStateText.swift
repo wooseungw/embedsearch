@@ -25,6 +25,7 @@ enum DisplayText {
         case .command: return "명령"
         case .shortcut: return "단축어"
         case .file: return "파일"
+        case .clipboard: return "클립보드"
         }
     }
 

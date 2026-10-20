@@ -525,6 +525,7 @@ private func badge(_ kind: ItemKind) -> String {
     case .command: "명령"
     case .shortcut: "단축어"
     case .file: "파일"
+    case .clipboard: "클립보드"
     }
 }
 
@@ -535,5 +536,6 @@ private func describe(_ action: ItemAction) -> String {
     case .runShortcut(let name): "shortcuts run \"\(name)\""
     case .builtinCommand(let id): "builtin \(id)"
     case .openFile(let path): "open \(path)"
+    case .copyText(let text): "copy \(text.count) characters"
     }
 }

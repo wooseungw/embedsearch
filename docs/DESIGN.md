@@ -16,7 +16,10 @@ Research basis: `docs/reports/EmbeddingGemma 맥 임베딩 검색 런처.md` (+ 
 - Search behavior (both are required):
   - while typing (only when **not composing Hangul** — `hasMarkedText == false`): instant lexical results on each committed change, then hybrid semantic search after ~200 ms debounce (cancel previous task);
   - **Enter**: if the visible results are stale for the current text (semantic search not finished for exactly this text), run the full search immediately and do NOT open; otherwise open the selected result. If Enter commits IME composition, it only commits + searches.
-- Keys: ↑/↓, ⌃N/⌃P, ↵ open, ⌘1–9 open Nth, Esc (clear text → close), ⌘, settings.
+- Keys: ↑/↓, ⌃N/⌃P, ↵ open, ⌘1–9 open Nth, Esc (close preview → clear text → close), ⌘, settings; for files (and apps): ⌘↵ reveal in Finder, ⌘C copy path (when no text is selected in the field), ⌘Y preview below the panel (PDF at the matched page with the query's words highlighted, or the image; follows the selection). Rows drag out as their file.
+- First launch (`App/Onboarding`): on a new install (no index database yet) a window introduces the app, shows the model download (it starts at launch; ~1.5 GB, progress from `EngineState.loadingModel`, "다시 시도" on failure), embeds the "검색 폴더" settings view, offers launch at login, and ends with the keys. Closing it counts as done (`onboardingCompleted`); the menu bar's "시작 안내…" or `embedsearch://welcome` opens it again. Installs from before it are marked done without showing it.
+- Clipboard history (`App/Clipboard`): the last 30 copied texts, in memory only (never in the index DB, never embedded), FIFO; copying a text again or choosing it moves it to the newest end instead of adding it twice. The pasteboard's `changeCount` is polled every 0.5 s (tolerance 0.25 s) — macOS sends no change notification. Skipped: nspasteboard.org concealed/transient/auto-generated types (password managers), Finder file copies, whitespace, texts over 100k characters. ⌥⇧V (Settings › 클립보드), ⇥ or the search row's mode button in an open panel (the typed text carries over), or the `clipboard-history` command opens the panel in clipboard mode (everything newest first; typing narrows; instant results are final); normal search puts up to 3 matching entries after its first 3 results (a trailing section sat below the 8 visible rows). macOS 15.4+ pasteboard privacy (`accessBehavior` ask/deny; off in macOS 26 unless a developer default enables it): nothing is read, and the mode says why. ↵ copies, ⌃X removes an entry; choosing one touches only the history, not the usage tables.
+- A PDF found by its content shows `p.N` and the words around the match instead of its folder (`ScoreBreakdown.page`; the page text is read again with PDFKit, only for rows on screen — the index stores no chunk text).
 
 ## Module layout (SwiftPM `Package.swift` + XcodeGen app)
 | Target | Path | Owner track | Notes |
@@ -51,7 +54,8 @@ public final class MLXTextEmbedder: TextEmbedder {   // Sendable; internally ser
 ### Built-in command ids (Search track defines items in `BuiltinCommands`; App track executes them)
 `lock-screen`, `sleep`, `display-sleep`, `screen-saver`, `restart`*, `shut-down`*, `log-out`*, `empty-trash`*,
 `toggle-dark-mode`, `toggle-mute`, `volume-up`, `volume-down`, `screenshot`, `toggle-hidden-files`,
-`open-downloads`, `open-desktop`, `open-documents`, `open-home`, `eject-all`*, `restart-finder`, `restart-dock`
+`open-downloads`, `open-desktop`, `open-documents`, `open-home`, `eject-all`*, `restart-finder`, `restart-dock`,
+`clipboard-history` (the panel switches to its clipboard mode in place)
 (* = `requiresConfirmation = true`)
 
 ### Item id conventions

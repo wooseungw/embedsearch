@@ -10,6 +10,7 @@ struct LauncherView: View {
     let searchField: NSTextField
     let onBackgroundClick: () -> Void
     let onOpenSettings: () -> Void
+    let onToggleMode: () -> Void
 
     static let openSpring = Animation.spring(response: 0.36, dampingFraction: 0.78)
     static let closeSpring = Animation.spring(response: 0.28, dampingFraction: 0.95)
@@ -35,7 +36,8 @@ struct LauncherView: View {
     }
 
     private var content: some View {
-        PanelContentView(model: model, query: query, searchField: searchField, onOpenSettings: onOpenSettings)
+        PanelContentView(model: model, query: query, searchField: searchField, onOpenSettings: onOpenSettings,
+                         onToggleMode: onToggleMode)
             .frame(width: model.panelWidth, height: contentHeight, alignment: .top)
     }
 
@@ -94,6 +96,7 @@ struct PanelContentView: View {
     let query: QueryController
     let searchField: NSTextField
     let onOpenSettings: () -> Void
+    let onToggleMode: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,11 +108,13 @@ struct PanelContentView: View {
                 .frame(height: PanelLayout.searchRowHeight)
             if query.displayedRowCount > 0 {
                 separator
-                ResultsListView(query: query, commandHeld: model.commandHeld)
+                ResultsListView(query: query, commandHeld: model.commandHeld, panelWidth: model.panelWidth,
+                                clipboardProblem: model.clipboardProblem)
                     .frame(height: PanelLayout.listHeight(rows: query.displayedRowCount, headers: query.displayedHeaderCount))
             }
             separator
-            FooterView(query: query, onOpenSettings: onOpenSettings)
+            FooterView(query: query, notice: model.notice, commandHeld: model.commandHeld, previewing: model.isPreviewing,
+                       onOpenSettings: onOpenSettings)
                 .frame(height: PanelLayout.footerHeight)
         }
     }
@@ -130,9 +135,10 @@ struct PanelContentView: View {
 
     private var searchRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: query.mode == .clipboard ? "doc.on.clipboard" : "magnifyingglass")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 22)
             SearchFieldView(field: searchField)
                 .frame(height: 28)
             if query.isFullSearchRunning {
@@ -140,6 +146,9 @@ struct PanelContentView: View {
                     .controlSize(.small)
                     .scaleEffect(0.8)
                     .transition(.opacity)
+            }
+            if query.clipboardService != nil {
+                ModeButton(target: query.mode == .clipboard ? "검색" : "클립보드", action: onToggleMode)
             }
         }
         .padding(.horizontal, 20)
@@ -155,6 +164,8 @@ struct PanelContentView: View {
 struct ResultsListView: View {
     let query: QueryController
     let commandHeld: Bool
+    let panelWidth: CGFloat
+    let clipboardProblem: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -164,13 +175,15 @@ struct ResultsListView: View {
                         placeholderRow
                     }
                     ForEach(Array(query.results.enumerated()), id: \.element.id) { index, result in
-                        if index == query.settingsSectionStart {
-                            SectionHeaderView(title: "설정")
+                        if let title = query.sectionHeaders[index] {
+                            SectionHeaderView(title: title)
                         }
                         ResultRowView(result: result, index: index, isSelected: index == query.selectedIndex,
-                                      showsShortcut: commandHeld)
+                                      showsShortcut: commandHeld, query: query.resultsQuery,
+                                      titleWidthBesideExcerpt: (panelWidth * 0.4).rounded())
                             .id(result.id)
                             .onTapGesture { query.openResult(at: index) }
+                            .modifier(FileDrag(path: result.item.filePath))
                     }
                 }
                 .padding(.vertical, PanelLayout.listVerticalPadding)
@@ -187,11 +200,18 @@ struct ResultsListView: View {
         }
     }
 
+    private var placeholderText: String {
+        if query.isStale { return "검색 중…" }
+        guard query.mode == .clipboard else { return "결과 없음 — ↵ 로 다시 검색" }
+        if let clipboardProblem { return clipboardProblem }
+        return query.text.isEmpty ? "아직 기록이 없습니다 — 텍스트를 복사하면 여기에 쌓입니다" : "일치하는 기록 없음"
+    }
+
     private var placeholderRow: some View {
         HStack(spacing: 10) {
             Image(systemName: query.isStale ? "ellipsis" : "questionmark.circle")
                 .frame(width: 24)
-            Text(query.isStale ? "검색 중…" : "결과 없음 — ↵ 로 다시 검색")
+            Text(placeholderText)
             Spacer()
         }
         .font(.system(size: 13))
@@ -220,28 +240,72 @@ struct SectionHeaderView: View {
     }
 }
 
+/// Drags the row out as its file (to Finder, Mail, a chat…), for rows that have one.
+struct FileDrag: ViewModifier {
+    let path: String?
+
+    func body(content: Content) -> some View {
+        if let path {
+            content.onDrag { NSItemProvider(object: URL(filePath: path) as NSURL) }
+        } else {
+            content
+        }
+    }
+}
+
 struct FooterView: View {
     let query: QueryController
+    let notice: String?
+    /// ⌘ held: the ⌘ shortcuts for the selection that the footer has no room for otherwise.
+    let commandHeld: Bool
+    let previewing: Bool
     let onOpenSettings: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(stateColor)
-                .frame(width: 6, height: 6)
-            Text(DisplayText.engineState(query.engineState))
-                .foregroundStyle(.white.opacity(0.55))
-                .help(stateHelp)
-            if case .loadingModel(let progress) = query.engineState {
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .controlSize(.mini)
-                    .frame(width: 56)
-                    .tint(.white.opacity(0.6))
+            if let notice {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(notice)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
+            } else if query.mode == .clipboard {
+                Image(systemName: "doc.on.clipboard")
+                    .foregroundStyle(.white.opacity(0.55))
+                Text("클립보드 · 최근 \(ClipboardHistory.capacity)개, 메모리에만 보관")
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+            } else {
+                Circle()
+                    .fill(stateColor)
+                    .frame(width: 6, height: 6)
+                Text(DisplayText.engineState(query.engineState))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .help(stateHelp)
+                if case .loadingModel(let progress) = query.engineState {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .controlSize(.mini)
+                        .frame(width: 56)
+                        .tint(.white.opacity(0.6))
+                }
             }
             Spacer()
-            KeyHint(key: "↵", label: query.isStale ? "검색" : "열기")
-            KeyHint(key: "esc", label: query.text.isEmpty ? "닫기" : "지우기")
+            if let item = query.selectedResult?.item {
+                if commandHeld, item.filePath != nil {
+                    KeyHint(key: "⌘C", label: "경로 복사")
+                }
+                if item.kind == .file {
+                    KeyHint(key: "⌘Y", label: "미리보기")
+                    KeyHint(key: "⌘↵", label: "Finder")
+                }
+                if item.kind == .clipboard {
+                    KeyHint(key: "⌃X", label: "삭제")
+                }
+            }
+            KeyHint(key: "↵", label: query.isStale ? "검색" : query.selectedResult?.item.kind == .clipboard ? "복사" : "열기")
+            KeyHint(key: "esc", label: previewing ? "미리보기 닫기" : query.text.isEmpty ? "닫기" : "지우기")
             SettingsButton(action: onOpenSettings)
         }
         .font(.system(size: 11.5))
@@ -260,6 +324,35 @@ struct FooterView: View {
     private var stateHelp: String {
         if case .degraded(let reason) = query.engineState { return reason }
         return DisplayText.engineState(query.engineState)
+    }
+}
+
+/// The search row's switch to the other mode (also ⇥).
+struct ModeButton: View {
+    /// The mode it switches to.
+    let target: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text("⇥")
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+                Text(target)
+            }
+            .font(.system(size: 11.5))
+            .foregroundStyle(.white.opacity(isHovered ? 0.95 : 0.65))
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(Capsule().fill(Color.white.opacity(isHovered ? 0.16 : 0.08)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .onHover { isHovered = $0 }
+        .help(target == "검색" ? "검색으로 돌아가기 (⇥)" : "클립보드 기록에서 찾기 (⇥)")
     }
 }
 

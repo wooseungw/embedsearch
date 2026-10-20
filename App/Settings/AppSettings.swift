@@ -18,6 +18,18 @@ final class AppSettings {
     var searchFolders: [String] {
         didSet { defaults.set(searchFolders, forKey: Keys.searchFolders) }
     }
+    /// Keep the last copied texts (in memory only, `ClipboardHistory`).
+    var clipboardHistoryEnabled: Bool {
+        didSet { defaults.set(clipboardHistoryEnabled, forKey: Keys.clipboardHistoryEnabled) }
+    }
+    /// Opens the panel on the clipboard history.
+    var clipboardHotKey: KeyCombo {
+        didSet { save(clipboardHotKey, forKey: Keys.clipboardHotKey) }
+    }
+    /// The first-launch introduction was shown (or the app was set up before it existed).
+    var onboardingCompleted: Bool {
+        didSet { defaults.set(onboardingCompleted, forKey: Keys.onboardingCompleted) }
+    }
 
     private let defaults: UserDefaults
 
@@ -26,6 +38,9 @@ final class AppSettings {
         static let panelStyle = "panelStyle"
         static let panelWidth = "panelWidth"
         static let searchFolders = "searchFolders"
+        static let clipboardHistoryEnabled = "clipboardHistoryEnabled"
+        static let clipboardHotKey = "clipboardHotKey"
+        static let onboardingCompleted = "onboardingCompleted"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -42,6 +57,14 @@ final class AppSettings {
             ? min(max(width, PanelLayout.panelWidthRange.lowerBound), PanelLayout.panelWidthRange.upperBound)
             : PanelLayout.defaultPanelWidth
         searchFolders = defaults.stringArray(forKey: Keys.searchFolders) ?? []
+        clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? true
+        if let data = defaults.data(forKey: Keys.clipboardHotKey),
+           let combo = try? JSONDecoder().decode(KeyCombo.self, from: data) {
+            clipboardHotKey = combo
+        } else {
+            clipboardHotKey = .clipboardDefault
+        }
+        onboardingCompleted = defaults.bool(forKey: Keys.onboardingCompleted)
     }
 
     private func save(_ combo: KeyCombo, forKey key: String) {

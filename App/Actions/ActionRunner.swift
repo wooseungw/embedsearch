@@ -8,10 +8,12 @@ final class ActionRunner {
     enum ActionError: Error, CustomStringConvertible {
         case invalidURL(String)
         case openFailed(String)
+        case copyFailed
         var description: String {
             switch self {
             case .invalidURL(let string): return "잘못된 URL: \(string)"
             case .openFailed(let string): return "열 수 없음: \(string)"
+            case .copyFailed: return "클립보드에 넣지 못했습니다"
             }
         }
     }
@@ -29,7 +31,7 @@ final class ActionRunner {
             return false
         }
         if dryRun {
-            logger.notice("dry-run \(item.id, privacy: .public): \(String(describing: item.action), privacy: .public)")
+            logger.notice("dry-run \(item.id, privacy: .public): \(Self.describe(item.action), privacy: .public)")
             return true
         }
         do {
@@ -40,6 +42,12 @@ final class ActionRunner {
             NSSound.beep()
             return false
         }
+    }
+
+    /// For logs: a copied text only by its length, so clipboard text never reaches the log store.
+    static func describe(_ action: ItemAction) -> String {
+        if case .copyText(let text) = action { return "copyText(\(text.count) characters)" }
+        return String(describing: action)
     }
 
     func perform(_ action: ItemAction) async throws {
@@ -57,7 +65,42 @@ final class ActionRunner {
             try await commands.run(id)
         case .openFile(let path):
             guard NSWorkspace.shared.open(URL(fileURLWithPath: path)) else { throw ActionError.openFailed(path) }
+        case .copyText(let text):
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            guard pasteboard.setString(text, forType: .string) else { throw ActionError.copyFailed }
         }
+    }
+
+    /// Shows the item's file (a document, or an app bundle) selected in Finder, in front.
+    func reveal(_ item: SearchItem) async -> Bool {
+        guard let path = item.filePath else { return false }
+        if dryRun {
+            logger.notice("dry-run reveal \(item.id, privacy: .public)")
+            return true
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)])
+        // The panel never activates this app, and an inactive app cannot hand activation to Finder
+        // (macOS 14+): Finder selected the file behind the app in front. Opening Finder through
+        // Launch Services, as results open apps, brings it forward.
+        if let finder = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            _ = try? await NSWorkspace.shared.openApplication(at: finder, configuration: configuration)
+        }
+        return true
+    }
+
+    /// Puts the item's path on the pasteboard as plain text.
+    func copyPath(_ item: SearchItem) -> Bool {
+        guard let path = item.filePath else { return false }
+        if dryRun {
+            logger.notice("dry-run copy path \(item.id, privacy: .public)")
+            return true
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        return pasteboard.setString(path, forType: .string)
     }
 
     private func confirm(_ item: SearchItem) -> Bool {
@@ -70,5 +113,15 @@ final class ActionRunner {
         let cancelButton = alert.addButton(withTitle: "취소")
         cancelButton.keyEquivalent = "\u{1b}"
         return ActiveScreen.runModal(alert) == .alertFirstButtonReturn
+    }
+}
+
+extension SearchItem {
+    /// The file this item opens: a document or an app bundle.
+    var filePath: String? {
+        switch action {
+        case .openFile(let path), .openApplication(let path): return path
+        case .openURL, .runShortcut, .builtinCommand, .copyText: return nil
+        }
     }
 }

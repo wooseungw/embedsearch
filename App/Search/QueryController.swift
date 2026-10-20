@@ -8,6 +8,9 @@ import SearchCore
 /// - Enter on stale results (no finished full search for exactly the current text) runs `fullSearch`
 ///   now and does not open; Enter on fresh results opens the selection;
 /// - the Enter that commits an IME composition only commits + searches.
+///
+/// In clipboard mode it searches the clipboard history instead: an empty query lists it all, and
+/// the first (instant) results are final.
 @MainActor
 @Observable
 final class QueryController {
@@ -15,6 +18,11 @@ final class QueryController {
         case ignored
         case searching
         case opened(itemID: String)
+    }
+
+    enum Mode: Equatable {
+        case search
+        case clipboard
     }
 
     /// Committed text: what searches run on. Excludes in-progress marked text.
@@ -29,6 +37,7 @@ final class QueryController {
     private(set) var isFullSearchRunning = false
     private(set) var engineState: EngineState = .idle
     private(set) var lastSearchError: String?
+    private(set) var mode: Mode = .search
 
     /// Visible results are not the finished hybrid results for the current text.
     var isStale: Bool { !text.isEmpty && !(resultsAreFinal && resultsQuery == text) }
@@ -37,21 +46,22 @@ final class QueryController {
         results.indices.contains(selectedIndex) ? results[selectedIndex] : nil
     }
 
-    /// Rows the list shows: results, or one placeholder row ("검색 중…"/"결과 없음") for a non-empty query.
+    /// Rows the list shows: results, or one placeholder row ("검색 중…"/"결과 없음") for a non-empty
+    /// query or an empty clipboard history.
     var displayedRowCount: Int {
         if !results.isEmpty { return results.count }
-        return text.isEmpty ? 0 : 1
+        return text.isEmpty && mode == .search ? 0 : 1
     }
 
-    /// Index of the first result of the trailing settings section (settings that matched only
-    /// loosely, listed after the files), if the results have one.
-    var settingsSectionStart: Int? {
-        guard let index = results.firstIndex(where: { $0.section == .settings }), index > 0 else { return nil }
-        return index
+    /// Titles of the trailing sections by the index of their first row: settings that matched only
+    /// loosely (listed after the files). None above the first row.
+    var sectionHeaders: [Int: String] {
+        guard let index = results.firstIndex(where: { $0.section == .settings }), index > 0 else { return [:] }
+        return [index: "설정"]
     }
 
     /// Section titles the list shows above the rows.
-    var displayedHeaderCount: Int { settingsSectionStart == nil ? 0 : 1 }
+    var displayedHeaderCount: Int { sectionHeaders.count }
 
     /// Called when the user opens a result (Enter on fresh results, ⌘1–9, click).
     @ObservationIgnored var onOpen: ((SearchResult, _ query: String) -> Void)?
@@ -59,6 +69,8 @@ final class QueryController {
     @ObservationIgnored var onLayoutChange: (() -> Void)?
 
     let service: any SearchService
+    /// The clipboard mode's search (`ClipboardSearchService`); nil: no clipboard mode.
+    let clipboardService: (any SearchService)?
     private let debounce: Duration
     private let limit: Int
     @ObservationIgnored private var instantTask: Task<Void, Never>?
@@ -70,10 +82,49 @@ final class QueryController {
     @ObservationIgnored private var engineTask: Task<Void, Never>?
     @ObservationIgnored private var reportedLayout = (rows: 0, headers: 0)
 
-    init(service: any SearchService, debounce: Duration = .milliseconds(200), limit: Int = 50) {
+    init(service: any SearchService, clipboardService: (any SearchService)? = nil,
+         debounce: Duration = .milliseconds(200), limit: Int = 50) {
         self.service = service
+        self.clipboardService = clipboardService
         self.debounce = debounce
         self.limit = limit
+    }
+
+    /// What searches go to in the current mode.
+    private var activeService: any SearchService {
+        mode == .clipboard ? clipboardService ?? service : service
+    }
+
+    // MARK: - Mode
+
+    /// Switches what the field searches, for the text already typed: clipboard mode lists the
+    /// whole history (or what has the text) at once; search mode searches the text as if typed.
+    func setMode(_ newMode: Mode) {
+        guard newMode != mode, newMode == .search || clipboardService != nil else { return }
+        instantTask?.cancel()
+        instantTask = nil
+        cancelFullSearch()
+        mode = newMode
+        selectionTouched = false
+        setResults([], query: "", final: false)
+        if newMode == .clipboard {
+            runInstantSearch(text, final: true)
+        } else if !text.isEmpty {
+            runInstantSearch(text)
+            scheduleFullSearch(text)
+        }
+        reportLayoutIfNeeded()
+    }
+
+    /// Takes a result out of the list at once (its clipboard entry was deleted). The selection
+    /// stays on the row that takes its place, so a second ⌃X deletes the next entry, not the first.
+    func dropResult(id: String) {
+        guard let index = results.firstIndex(where: { $0.id == id }) else { return }
+        results.remove(at: index)
+        if index < selectedIndex { selectedIndex -= 1 }
+        selectedIndex = max(0, min(selectedIndex, results.count - 1))
+        selectionTouched = !results.isEmpty
+        reportLayoutIfNeeded()
     }
 
     // MARK: - Engine state
@@ -104,7 +155,9 @@ final class QueryController {
         cancelFullSearch()
         instantTask?.cancel()
 
-        if newText.isEmpty {
+        if mode == .clipboard {
+            runInstantSearch(newText, final: true)
+        } else if newText.isEmpty {
             instantTask = nil
             setResults([], query: "", final: false)
         } else {
@@ -124,7 +177,8 @@ final class QueryController {
 
     @discardableResult
     func enterPressed() -> EnterOutcome {
-        guard !isComposing, !text.isEmpty else { return .ignored }
+        // The clipboard mode lists entries with nothing typed.
+        guard !isComposing, !text.isEmpty || mode == .clipboard else { return .ignored }
         if isStale {
             runFullSearchNow(text)
             return .searching
@@ -156,12 +210,12 @@ final class QueryController {
     }
 
     func recordSelection(_ result: SearchResult, query: String) {
-        let service = service
+        let service = activeService
         let itemID = result.id
         Task { await service.recordSelection(itemID: itemID, query: query) }
     }
 
-    /// Clears everything (panel hidden or Esc on a non-empty query).
+    /// Clears everything and goes back to search mode (panel hidden).
     func reset() {
         instantTask?.cancel()
         instantTask = nil
@@ -169,31 +223,36 @@ final class QueryController {
         isComposing = false
         text = ""
         lastSearchError = nil
+        mode = .search
         setResults([], query: "", final: false)
         reportLayoutIfNeeded()
     }
 
     // MARK: - Search tasks
 
-    private func runInstantSearch(_ query: String) {
-        let service = service
+    /// `final`: the results are all this text gets (clipboard mode has no slower search).
+    private func runInstantSearch(_ query: String, final: Bool = false) {
+        let service = activeService
         let limit = limit
+        let mode = mode
+        instantTask?.cancel()
         instantTask = Task { [weak self] in
             let found = await service.instantSearch(query, limit: limit)
-            guard let self, !Task.isCancelled, self.text == query else { return }
+            guard let self, !Task.isCancelled, self.text == query, self.mode == mode else { return }
             // A finished full search for the same text wins over a late instant result.
-            if self.resultsAreFinal && self.resultsQuery == query { return }
-            self.setResults(found, query: query, final: false)
+            if !final && self.resultsAreFinal && self.resultsQuery == query { return }
+            self.setResults(found, query: query, final: final)
         }
     }
 
     private func scheduleFullSearch(_ query: String) {
         let debounce = debounce
+        let service = activeService
         fullTask = Task { [weak self] in
             do { try await Task.sleep(for: debounce) } catch { return }
             guard let self, !Task.isCancelled, self.text == query else { return }
             let generation = self.beginFullSearch(query)
-            await self.performFullSearch(query, generation: generation)
+            await self.performFullSearch(query, generation: generation, service: service)
         }
     }
 
@@ -201,8 +260,9 @@ final class QueryController {
         if inFlightFullQuery == query { return } // already waiting on the service for exactly this text
         cancelFullSearch()
         let generation = beginFullSearch(query)
+        let service = activeService
         fullTask = Task { [weak self] in
-            await self?.performFullSearch(query, generation: generation)
+            await self?.performFullSearch(query, generation: generation, service: service)
         }
     }
 
@@ -214,7 +274,9 @@ final class QueryController {
         return fullSearchGeneration
     }
 
-    private func performFullSearch(_ query: String, generation: Int) async {
+    /// `service`: the one of the mode the search was started in, so a clipboard query never
+    /// reaches the index (it would store the query's vector).
+    private func performFullSearch(_ query: String, generation: Int, service: any SearchService) async {
         defer {
             if fullSearchGeneration == generation {
                 inFlightFullQuery = nil
@@ -222,7 +284,6 @@ final class QueryController {
             }
         }
 
-        let service = service
         let limit = limit
         let found: [SearchResult]
         do {

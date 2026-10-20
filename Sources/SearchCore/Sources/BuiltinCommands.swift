@@ -120,6 +120,11 @@ public enum BuiltinCommands {
             descriptionKo: "Dock을 종료하고 다시 실행합니다", descriptionEn: "Relaunch the Dock",
             synonyms: ["독 재시작", "Dock 다시 시작", "relaunch dock", "kill dock"],
             symbol: "dock.rectangle", requiresConfirmation: false),
+        BuiltinCommand(
+            id: "clipboard-history", titleKo: "클립보드 기록", titleEn: "Clipboard History",
+            descriptionKo: "최근에 복사한 텍스트를 보고 다시 복사합니다", descriptionEn: "Browse recently copied text and copy it again",
+            synonyms: ["클립보드", "복사 기록", "복사한 것", "붙여넣기 기록", "clipboard", "clipboard history", "paste history", "copy history"],
+            symbol: "doc.on.clipboard", requiresConfirmation: false),
     ]
 
     public static let ids: [String] = all.map(\.id)

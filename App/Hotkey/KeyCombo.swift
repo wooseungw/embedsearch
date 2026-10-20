@@ -15,6 +15,13 @@ struct KeyCombo: Hashable, Codable, Sendable {
     static let `default` = optionSpace
     static let presets: [KeyCombo] = [optionSpace, controlSpace, optionCommandSpace, controlOptionSpace, shiftCommandSpace]
 
+    /// The clipboard history's. ⇧⌘V is left out: many apps paste without formatting with it.
+    static let optionShiftV = KeyCombo(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(optionKey | shiftKey))
+    static let controlCommandV = KeyCombo(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(controlKey | cmdKey))
+    static let controlOptionV = KeyCombo(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(controlKey | optionKey))
+    static let clipboardDefault = optionShiftV
+    static let clipboardPresets: [KeyCombo] = [optionShiftV, controlCommandV, controlOptionV]
+
     /// From a recorder key-down. Requires at least one of ⌃⌥⌘ (⇧ alone is not a hotkey).
     init?(event: NSEvent) {
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])

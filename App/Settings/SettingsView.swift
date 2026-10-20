@@ -2,7 +2,7 @@ import SearchCore
 import SwiftUI
 
 enum SettingsTab: Hashable {
-    case general, folders, engine
+    case general, folders, clipboard, engine
 }
 
 /// Which tab the settings window shows (the menu's "검색 폴더…" opens it on `.folders`).
@@ -18,6 +18,8 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     @Bindable var navigation: SettingsNavigation
     let hotKeys: HotKeyController
+    let clipboardHotKeys: HotKeyController
+    let clipboard: ClipboardHistory
     let launchAtLogin: LaunchAtLogin
     let query: QueryController
     let onPreview: () -> Void
@@ -38,6 +40,10 @@ struct SettingsView: View {
             SearchFoldersView(settings: settings, runtime: AppServices.runtime, engineState: query.engineState)
                 .tabItem { Label("검색 폴더", systemImage: "folder") }
                 .tag(SettingsTab.folders)
+
+            ClipboardSettingsView(settings: settings, hotKeys: clipboardHotKeys, history: clipboard)
+                .tabItem { Label("클립보드", systemImage: "doc.on.clipboard") }
+                .tag(SettingsTab.clipboard)
 
             Form { engineSection }
                 .formStyle(.grouped)
@@ -141,7 +147,9 @@ struct SettingsView: View {
     }
 
     private var isFailure: Bool {
-        if case .failed = hotKeys.status { return true }
-        return false
+        switch hotKeys.status {
+        case .failed, .clashes: return true
+        default: return false
+        }
     }
 }

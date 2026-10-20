@@ -85,6 +85,8 @@ targets:
       - path: App/Search/EngineStateText.swift
       - path: App/Panel/LauncherFieldEditor.swift
       - path: App/Panel/PanelLayout.swift
+      - path: App/Preview/PageMatch.swift
+      - path: App/Clipboard/ClipboardHistory.swift
       - path: App/Dev/MockSearchService.swift
       - path: App/Dev/MockCatalog.swift
     dependencies:

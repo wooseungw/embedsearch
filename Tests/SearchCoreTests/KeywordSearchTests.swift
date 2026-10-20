@@ -99,6 +99,47 @@ struct KeywordSearchTests {
         #expect(try store.keywordMatches(words: words("다이캐스팅"), chunks: 10).isEmpty)
     }
 
+    @Test func cardTextHasNoPage() throws {
+        let store = try IndexStore.inMemory()
+        try store.saveFileChunks([(a, FileIndexRecord(chunks: 1), chunks(1))], modelKey: "m")
+        let card = FileContent.Text(kind: .card, text: "NAVSIM: a benchmark", page: 1)
+        #expect(try store.saveFileTexts([(a, [card, text("NAVSIM results", page: 6)])]) == 1)
+        let pages = try store.keywordMatches(words: [["navsim"]], chunks: 10).map(\.page)
+        #expect(pages == [nil] || pages == [6])
+        #expect(try store.keywordMatches(words: [["benchmark"]], chunks: 10).map(\.page) == [nil])
+        #expect(try store.keywordMatches(words: [["results"]], chunks: 10).map(\.page) == [6])
+    }
+
+    /// Cards saved before v8 kept page 1; the migration clears it and leaves other text alone.
+    @Test func v7CardTextLosesItsPage() throws {
+        let dir = try TempDir()
+        let url = dir.url.appending(path: "index.sqlite")
+        do {
+            let legacy = try DatabaseQueue(path: url.path)
+            try IndexStore.migrator.migrate(legacy, upTo: "v7-query-vector")
+            try legacy.write { db in
+                try db.execute(sql: "INSERT INTO model (id, key) VALUES (1, 'm')")
+                // a: card + body; b: no card, its first chunk is body text on page 1.
+                for (hash, kinds) in [(a, [ChunkKind.card, .text]), (b, [.text])] {
+                    for (seq, kind) in kinds.enumerated() {
+                        try db.execute(sql: "INSERT INTO fileChunk (modelId, fileHash, seq, kind, hub, vector, page) VALUES (1, ?, ?, ?, 0, ?, 1)",
+                                       arguments: [IndexStore.hashValue(hash), seq, Int(kind.rawValue), IndexStore.float16Data([1, 0, 0, 0])])
+                    }
+                    for seq in kinds.indices {
+                        try db.execute(sql: "INSERT INTO fileText (fileHash, seq, page) VALUES (?, ?, ?)",
+                                       arguments: [IndexStore.hashValue(hash), seq, seq == 0 ? 1 : 4])
+                    }
+                }
+            }
+        }
+        _ = try IndexStore(url: url)
+        let rows = try DatabaseQueue(path: url.path).read { db in
+            try Row.fetchAll(db, sql: "SELECT fileHash, seq, page FROM fileText ORDER BY fileHash, seq")
+                .map { (IndexStore.hashString($0["fileHash"]) ?? "", $0["seq"] as Int, $0["page"] as Int?) }
+        }
+        #expect(rows.map { "\($0.0.prefix(1)) \($0.1) \($0.2.map(String.init) ?? "-")" } == ["a 0 -", "a 1 4", "b 0 1"])
+    }
+
     /// A database from before keyword search (v5) opens with its records marked as having no text,
     /// except those with no text to read (an image without any); text saved for them later is
     /// found, and a version without a record gets none.
@@ -164,6 +205,26 @@ struct KeywordSearchTests {
         }
         #expect(ResultSections.arrange(results, analysis: analysis, config: .default).map(\.id) == ["app", "file"])
     }
+
+    @Test func rankerReportsThePageThatMatched() {
+        let analysis = QueryAnalyzer.analyze("navsim")
+        let kinds: [String: ItemKind] = ["content": .file, "both": .file, "words": .file, "name": .file]
+        let input = HybridRanker.Input(analysis: analysis, lexical: [LexicalHit(itemID: "name", score: 1, tier: .exact)],
+                                       semantic: [],
+                                       fileSemantic: [.init(itemID: "content", cosine: 0.5, page: 4),
+                                                      .init(itemID: "both", cosine: 0.5, page: 2)],
+                                       fileKeyword: [.init(itemID: "both", coverage: 1, page: 7),
+                                                     .init(itemID: "words", coverage: 1, page: 3)],
+                                       kinds: kinds)
+        let ranked = HybridRanker.rank(input, mode: .hybrid, config: .default, limit: 10)
+        let page = { (id: String) in ranked.first { $0.itemID == id }?.breakdown.page }
+        #expect(ranked.count == 4)
+        #expect(page("content") == 4)
+        // The words' chunk wins: that page has what the query says.
+        #expect(page("both") == 7)
+        #expect(page("words") == 3)
+        #expect(page("name") == nil)
+    }
 }
 
 @Suite("Keyword search in the engine")
@@ -196,6 +257,34 @@ struct KeywordEngineTests {
         #expect(casting.first?.item.title == "cast.pdf")
         // The instant (lexical) path does not search file text.
         #expect(await engine.instantSearch("NAVSIM", limit: 5).allSatisfy { $0.item.kind != .file })
+    }
+
+    /// Each page under one chunk's worth of text, so every page starts its own chunk.
+    @Test func resultsSayWhichPageMatched() async throws {
+        let folder = try TempFolder()
+        defer { folder.cleanUp() }
+        try folder.writePDF("drive.pdf", pages: [
+            String(repeating: "Quarterly sales figures for the northern region. ", count: 14),
+            String(repeating: "Minutes of the weekly design meeting about the logo. ", count: 13),
+            String(repeating: "NAVSIM is a benchmark for autonomous driving policies. ", count: 13),
+        ])
+        let store = try IndexStore.inMemory()
+        let engine = await makeEngine(store, FakeEmbedder(), folder: folder)
+        await engine.refresh()
+
+        let words = try await engine.fullSearch("NAVSIM benchmark", limit: 5)
+        #expect(words.first?.item.title == "drive.pdf")
+        #expect(words.first?.breakdown.page == 3)
+        let sales = try await engine.fullSearch("quarterly sales", limit: 5)
+        #expect(sales.first?.item.title == "drive.pdf")
+        #expect(sales.first?.breakdown.page == 1)
+        // Found by its content alone (no word in common): the content match's page.
+        let content = try await engine.fullSearch("weekly designs meetings logos", limit: 5)
+        let file = try #require(content.first { $0.item.title == "drive.pdf" })
+        #expect(file.breakdown.keywordRank == nil)
+        #expect(file.breakdown.page == 2)
+        // The name alone says nothing about a page.
+        #expect(await engine.instantSearch("drive", limit: 5).first { $0.item.title == "drive.pdf" }?.breakdown.page == nil)
     }
 
     /// "protocol 영수증": both files have "protocol" in every chunk but neither has 영수/수증, so

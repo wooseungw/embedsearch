@@ -1,12 +1,13 @@
 import AppKit
 
-/// Menu bar item: 열기, 설정…, 검색 폴더…, 다시 색인, 로그인 시 실행, 종료.
+/// Menu bar item: 열기, 설정…, 검색 폴더…, 시작 안내…, 다시 색인, 로그인 시 실행, 종료.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
         var open: () -> Void
         var settings: () -> Void
         var folders: () -> Void
+        var onboarding: () -> Void
         var reindex: () -> Void
     }
 
@@ -35,6 +36,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(item("열기 (\(settings.hotKey.displayString))", #selector(openPanel)))
         menu.addItem(item("설정…", #selector(openSettings), key: ","))
         menu.addItem(item("검색 폴더…", #selector(openFolders)))
+        menu.addItem(item("시작 안내…", #selector(openOnboarding)))
         menu.addItem(.separator())
         menu.addItem(item("다시 색인", #selector(reindex)))
         let login = item(launchAtLogin.status == .requiresApproval ? "로그인 시 실행 (승인 필요)" : "로그인 시 실행",
@@ -58,6 +60,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() { actions.settings() }
     @objc private func openFolders() { actions.folders() }
+    @objc private func openOnboarding() { actions.onboarding() }
     @objc private func reindex() { actions.reindex() }
 
     @objc private func toggleLaunchAtLogin() {

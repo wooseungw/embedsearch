@@ -376,6 +376,7 @@ enum Reference {
             case .systemSetting: 2
             case .shortcut: 3
             case .file: 4
+            case .clipboard: 5
             }
         }
         let hits = items.indices.filter { best[$0].0 > 0 }.sorted { a, b in

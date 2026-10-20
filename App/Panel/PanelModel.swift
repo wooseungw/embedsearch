@@ -13,6 +13,12 @@ final class PanelModel {
     var isExpanded = false
     var commandHeld = false
     var hotKeyHint = KeyCombo.default.displayString
+    /// A short confirmation the footer shows in place of the engine state ("경로를 복사했습니다").
+    var notice: String?
+    /// The file preview below the panel is open (⌘Y).
+    var isPreviewing = false
+    /// Why the clipboard history records nothing (off, or macOS denies reading), for its mode.
+    var clipboardProblem: String?
 
     /// Top inset above the search row: the notch band (notch style) or nothing (classic).
     var topInset: CGFloat { style == .notch ? notchSize.height : 0 }

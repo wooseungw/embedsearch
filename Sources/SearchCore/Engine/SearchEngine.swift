@@ -1023,7 +1023,8 @@ public actor SearchEngine: SearchService {
         if let index = chunks, index.dimensions == qv.count, index.rowCount > 0 {
             fileHits = index.search(qv, k: max(config.fileCandidates, 1), hubWeight: Float(config.hubWeight))
                 .filter { Double($0.score) >= config.minFileScore }
-                .map { HybridRanker.SemanticHit(itemID: $0.itemID, cosine: Double($0.cosine), score: Double($0.score)) }
+                .map { HybridRanker.SemanticHit(itemID: $0.itemID, cosine: Double($0.cosine), score: Double($0.score),
+                                                page: $0.kind == .card ? nil : $0.page) }
         }
         if semanticFailure != nil, !isIndexing {
             semanticFailure = nil
@@ -1063,7 +1064,7 @@ public actor SearchEngine: SearchService {
             for p in filePositions[match.fileHash] ?? [] {
                 let id = items[Int(p)].id
                 guard match.rarity >= config.minFileKeywordRarity || found.contains(id) else { continue }
-                hits.append(HybridRanker.KeywordHit(itemID: id, coverage: match.coverage))
+                hits.append(HybridRanker.KeywordHit(itemID: id, coverage: match.coverage, page: match.page))
             }
             if hits.count >= config.fileKeywordCandidates { break }
         }

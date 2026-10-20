@@ -151,7 +151,8 @@ struct CommandSourceTests {
     @Test func builtinIdsMatchDesign() {
         let design = ["lock-screen", "sleep", "display-sleep", "screen-saver", "restart", "shut-down", "log-out", "empty-trash",
                       "toggle-dark-mode", "toggle-mute", "volume-up", "volume-down", "screenshot", "toggle-hidden-files",
-                      "open-downloads", "open-desktop", "open-documents", "open-home", "eject-all", "restart-finder", "restart-dock"]
+                      "open-downloads", "open-desktop", "open-documents", "open-home", "eject-all", "restart-finder", "restart-dock",
+                      "clipboard-history"]
         #expect(BuiltinCommands.ids == design)
         let confirm = Set(BuiltinCommands.all.filter(\.requiresConfirmation).map(\.id))
         #expect(confirm == ["restart", "shut-down", "log-out", "empty-trash", "eject-all"])

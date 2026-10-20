@@ -246,6 +246,16 @@ public final class IndexStore: Sendable {
                 ) WITHOUT ROWID;
                 """)
         }
+        // A card (title, headings, abstract: always a PDF's first text, seq 0) is the document as a
+        // whole, not a place in it: its text row has no page, so a keyword match on it does not
+        // claim page 1 over the content match's page (`ScoreBreakdown.page`). One scan of the
+        // chunks; the IN list is evaluated once.
+        m.registerMigration("v8-card-text-no-page") { db in
+            try db.execute(sql: """
+                UPDATE fileText SET page = NULL
+                WHERE seq = 0 AND fileHash IN (SELECT fileHash FROM fileChunk WHERE seq = 0 AND kind = \(ChunkKind.card.rawValue));
+                """)
+        }
         return m
     }
 
@@ -680,11 +690,12 @@ public final class IndexStore: Sendable {
         }
     }
 
-    /// (seq, page, tokens joined by spaces) of the texts that have any tokens.
+    /// (seq, page, tokens joined by spaces) of the texts that have any tokens. A card has no page
+    /// (see migration v8).
     private static func tokenRows(_ texts: [FileContent.Text]) -> [(seq: Int, page: Int?, tokens: String)] {
         texts.enumerated().compactMap { seq, text in
             let tokens = ContentTokenizer.tokens(text.text)
-            return tokens.isEmpty ? nil : (seq, text.page, tokens.joined(separator: " "))
+            return tokens.isEmpty ? nil : (seq, text.kind == .card ? nil : text.page, tokens.joined(separator: " "))
         }
     }
 

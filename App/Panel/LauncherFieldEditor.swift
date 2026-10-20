@@ -18,6 +18,8 @@ final class LauncherFieldEditor: NSTextView {
     var onComposingReturn: (() -> Void)?
     /// ⌃N (+1) / ⌃P (−1), resolved by physical key so the Korean layout can't remap them.
     var onControlNavigation: ((Int) -> Void)?
+    /// ⌃X (by physical key): remove the selected clipboard entry. Return true to consume it.
+    var onControlX: (() -> Bool)?
 
     /// True while handling a key-down that began with marked text.
     private(set) var keyDownBeganComposing = false
@@ -34,6 +36,9 @@ final class LauncherFieldEditor: NSTextView {
         let composing = hasMarkedText()
         if !composing, let delta = Self.controlNavigationDelta(for: event) {
             onControlNavigation?(delta)
+            return
+        }
+        if !composing, Self.isControlX(event), onControlX?() == true {
             return
         }
         keyDownBeganComposing = composing
@@ -88,6 +93,11 @@ final class LauncherFieldEditor: NSTextView {
 
     static func isReturn(_ event: NSEvent) -> Bool {
         event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter)
+    }
+
+    static func isControlX(_ event: NSEvent) -> Bool {
+        event.modifierFlags.intersection([.command, .option, .control, .shift]) == .control
+            && Int(event.keyCode) == kVK_ANSI_X
     }
 
     static func controlNavigationDelta(for event: NSEvent) -> Int? {

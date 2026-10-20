@@ -10,7 +10,10 @@ public enum ItemKind: String, Codable, Sendable, CaseIterable {
     case shortcut
     /// An image or PDF in a folder the user chose; found by name and by content (see `FileScanner`).
     case file
-    // Later phases: clipboard, browserHistory
+    /// Text copied in any app. The App keeps the last few in memory only: never indexed, embedded
+    /// or stored by SearchCore.
+    case clipboard
+    // Later phases: browserHistory
 }
 
 public enum ItemAction: Codable, Hashable, Sendable {
@@ -24,6 +27,8 @@ public enum ItemAction: Codable, Hashable, Sendable {
     case builtinCommand(id: String)
     /// Open a document with its default app.
     case openFile(path: String)
+    /// Put this text on the pasteboard.
+    case copyText(String)
 }
 
 public enum IconHint: Codable, Hashable, Sendable {
@@ -91,10 +96,15 @@ public struct ScoreBreakdown: Codable, Sendable, Hashable {
     public var keywordCoverage: Double?
     public var frecencyBoost: Double
     public var final: Double
+    /// Files: the PDF page (1-based) the matching text starts on — the keyword match's chunk when
+    /// there is one (it has the query's words), else the content match's. Nil when only the name
+    /// matched, for images, and when the content match was the document as a whole (its card:
+    /// title, headings, abstract).
+    public var page: Int?
 
     public init(lexicalRank: Int? = nil, lexicalScore: Double? = nil, semanticRank: Int? = nil,
                 cosine: Double? = nil, keywordRank: Int? = nil, keywordCoverage: Double? = nil,
-                frecencyBoost: Double = 0, final: Double = 0) {
+                frecencyBoost: Double = 0, final: Double = 0, page: Int? = nil) {
         self.lexicalRank = lexicalRank
         self.lexicalScore = lexicalScore
         self.semanticRank = semanticRank
@@ -103,6 +113,7 @@ public struct ScoreBreakdown: Codable, Sendable, Hashable {
         self.keywordCoverage = keywordCoverage
         self.frecencyBoost = frecencyBoost
         self.final = final
+        self.page = page
     }
 }
 

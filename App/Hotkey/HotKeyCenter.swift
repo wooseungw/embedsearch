@@ -2,41 +2,42 @@ import Carbon.HIToolbox
 
 /// Minimal Carbon `RegisterEventHotKey` wrapper (no permission prompt, works unsandboxed and
 /// sandboxed). Unlike most wrappers it hands back the `OSStatus`, so a failed registration
-/// (e.g. `eventHotKeyExistsErr` −9878) can be shown to the user.
+/// (e.g. `eventHotKeyExistsErr` −9878) can be shown to the user. Holds one hotkey per id (the
+/// launcher, the clipboard history).
 @MainActor
 final class HotKeyCenter {
     static let shared = HotKeyCenter()
 
-    var onPressed: (() -> Void)?
-    private(set) var registeredCombo: KeyCombo?
-
-    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
+    private var handlers: [UInt32: () -> Void] = [:]
     private var handlerRef: EventHandlerRef?
+    /// While a Settings recorder listens for a new combo, no hotkey fires (the recorder swallows
+    /// every key-down, so a panel opened then could not be typed in).
+    var isPaused = false
     fileprivate static let signature: OSType = 0x4553_5243 // 'ESRC'
 
     private init() {}
 
-    /// Replaces any current registration. Returns the Carbon status (`noErr` on success).
+    /// Replaces the registration under `id`. Returns the Carbon status (`noErr` on success).
     @discardableResult
-    func register(_ combo: KeyCombo) -> OSStatus {
+    func register(_ combo: KeyCombo, id: UInt32, onPressed: @escaping () -> Void) -> OSStatus {
         let handlerStatus = installHandlerIfNeeded()
         guard handlerStatus == noErr else { return handlerStatus }
-        unregister()
+        unregister(id: id)
         var ref: EventHotKeyRef?
-        let hotKeyID = EventHotKeyID(signature: Self.signature, id: 1)
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: id)
         let status = RegisterEventHotKey(combo.keyCode, combo.carbonModifiers, hotKeyID,
                                          GetApplicationEventTarget(), 0, &ref)
-        if status == noErr {
-            hotKeyRef = ref
-            registeredCombo = combo
+        if status == noErr, let ref {
+            hotKeyRefs[id] = ref
+            handlers[id] = onPressed
         }
         return status
     }
 
-    func unregister() {
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
-        hotKeyRef = nil
-        registeredCombo = nil
+    func unregister(id: UInt32) {
+        if let ref = hotKeyRefs.removeValue(forKey: id) { UnregisterEventHotKey(ref) }
+        handlers[id] = nil
     }
 
     private func installHandlerIfNeeded() -> OSStatus {
@@ -46,8 +47,8 @@ final class HotKeyCenter {
     }
 
     fileprivate func handlePressed(_ hotKeyID: EventHotKeyID) {
-        guard hotKeyID.signature == Self.signature else { return }
-        onPressed?()
+        guard hotKeyID.signature == Self.signature, !isPaused else { return }
+        handlers[hotKeyID.id]?()
     }
 
     static func describe(_ status: OSStatus) -> String {

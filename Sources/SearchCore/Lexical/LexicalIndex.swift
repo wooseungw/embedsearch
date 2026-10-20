@@ -224,6 +224,7 @@ public struct LexicalIndex: Sendable {
         case .systemSetting: 2
         case .shortcut: 3
         case .file: 4
+        case .clipboard: 5
         }
     }
 }

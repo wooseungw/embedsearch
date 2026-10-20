@@ -18,7 +18,7 @@ struct BuiltinCommandRunner {
         "lock-screen", "sleep", "display-sleep", "screen-saver", "restart", "shut-down", "log-out",
         "empty-trash", "toggle-dark-mode", "toggle-mute", "volume-up", "volume-down", "screenshot",
         "toggle-hidden-files", "open-downloads", "open-desktop", "open-documents", "open-home",
-        "eject-all", "restart-finder", "restart-dock",
+        "eject-all", "restart-finder", "restart-dock", "clipboard-history",
     ]
 
     func run(_ id: String) async throws {
@@ -66,6 +66,8 @@ struct BuiltinCommandRunner {
             try await Shell.run("/usr/bin/killall", ["Finder"])
         case "restart-dock":
             try await Shell.run("/usr/bin/killall", ["Dock"])
+        case "clipboard-history":
+            break // the panel switches to its clipboard mode before an action would run (`LauncherPanelController.open`)
         default:
             throw CommandError.unknown(id)
         }

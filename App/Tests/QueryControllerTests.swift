@@ -96,12 +96,12 @@ struct QueryControllerTests {
         controller.inputChanged(text: "sections", composing: false)
         try await waitUntil { controller.resultsAreFinal }
         #expect(controller.results.count == 5)
-        #expect(controller.settingsSectionStart == 4)
+        #expect(controller.sectionHeaders == [4: "설정"])
         #expect(controller.displayedHeaderCount == 1)
         #expect(layoutChanges >= 2)
         controller.inputChanged(text: "other", composing: false)
         try await waitUntil { controller.resultsAreFinal && controller.resultsQuery == "other" }
-        #expect(controller.settingsSectionStart == nil)
+        #expect(controller.sectionHeaders.isEmpty)
         #expect(controller.displayedHeaderCount == 0)
     }
 
