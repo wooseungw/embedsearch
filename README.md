@@ -8,12 +8,20 @@
 - macOS 15 이상
 - 선택: Java 11 이상 — 있으면 PDF를 [opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf)로 읽어 읽기 순서, 제목, 표 구조를 살립니다. 없으면 PDFKit으로 읽습니다.
 
-## 설치 (빌드된 앱)
+## 설치
+
+**터미널 한 줄 (추천)** — 최신 버전을 받아 `/Applications`에 설치하고 실행합니다. 경고 창이 뜨지 않고, 같은 명령으로 업데이트도 됩니다.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wooseungw/embedsearch/main/scripts/get.sh | bash
+```
+
+**DMG**
 
 1. **[EmbedSearch.dmg 다운로드](https://github.com/wooseungw/embedsearch/releases/latest/download/EmbedSearch.dmg)** — 열고 `EmbedSearch`를 옆의 `Applications` 폴더로 끌어 놓습니다. 이전 버전은 [Releases](https://github.com/wooseungw/embedsearch/releases)에 있습니다.
-2. 처음 열면 macOS가 실행을 막습니다. 앱이 Apple 공증을 받지 않았기 때문입니다. 한 번만 풀어주면 됩니다:
-   - **시스템 설정 → 개인정보 보호 및 보안**에서 맨 아래 EmbedSearch 항목의 **그래도 열기**를 누릅니다. (macOS 15부터는 Finder에서 우클릭 → 열기로는 통과되지 않습니다.)
-   - 또는 터미널에서:
+2. 앱이 Apple 공증을 받지 않아서, macOS가 "악성 코드가 없음을 확인할 수 없다"며 막습니다. DMG를 열 때와 앱을 처음 열 때 두 번 나올 수 있고, 그때마다:
+   - 경고 창에서 **완료**를 누르고(휴지통으로 이동 말고), **시스템 설정 → 개인정보 보호 및 보안** 맨 아래의 **그래도 열기**를 누릅니다. Finder에서 우클릭 → 열기로는 통과되지 않습니다.
+   - 또는 앱을 옮긴 뒤 터미널에서:
      ```sh
      xattr -dr com.apple.quarantine /Applications/EmbedSearch.app
      ```
