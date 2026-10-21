@@ -47,6 +47,12 @@ main() {
     done
     pkill -x EmbedSearch 2>/dev/null || true
 
+    # A downloaded update installs itself as the app quits (Sparkle's Autoupdate, about a second).
+    for _ in $(seq 1 40); do
+        pgrep -f "Autoupdate $bundle_id " >/dev/null || break
+        sleep 0.25
+    done
+
     echo "==> install to $dest"
     mkdir -p "$dest_dir"
     rm -rf "$dest"

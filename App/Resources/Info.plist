@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.2.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -30,7 +30,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -41,5 +41,15 @@
 	<string>다크 모드 전환, 휴지통 비우기 같은 시스템 명령을 실행하려면 System Events/Finder 제어 권한이 필요합니다.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Seungwoo</string>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/wooseungw/embedsearch/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>7944c9nh3Xctw+8Lg9LxHPAHtDtJH8LlUHjVM8mPevA=</string>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

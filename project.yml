@@ -24,6 +24,10 @@ settings:
 packages:
   EmbedSearchPackage:
     path: .
+  # Updates: checks the latest GitHub release's appcast.xml, made by scripts/make-appcast.sh.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: "2.10.0"
 
 targets:
   EmbedSearch:
@@ -44,12 +48,14 @@ targets:
         product: EmbedCore
       - package: EmbedSearchPackage
         product: EmbedMLX
+      - package: Sparkle
     info:
       path: App/Resources/Info.plist
       properties:
         CFBundleDisplayName: EmbedSearch
         CFBundleName: EmbedSearch
         CFBundleShortVersionString: "0.2.0"
+        # Sparkle compares this, not the short version: raise it with every release.
         CFBundleVersion: "2"
         CFBundleDevelopmentRegion: ko
         LSApplicationCategoryType: public.app-category.productivity
@@ -61,6 +67,13 @@ targets:
           - CFBundleURLName: com.seungwoo.embedsearch
             CFBundleURLSchemes:
               - embedsearch
+        # Checks daily, downloads silently and installs when the app quits; asks every 7 days while a
+        # downloaded update waits. SUPublicEDKey verifies the dmg; its private key is in the publisher's keychain.
+        SUFeedURL: https://github.com/wooseungw/embedsearch/releases/latest/download/appcast.xml
+        SUPublicEDKey: 7944c9nh3Xctw+8Lg9LxHPAHtDtJH8LlUHjVM8mPevA=
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
+        SUVerifyUpdateBeforeExtraction: true
     entitlements:
       path: App/Resources/EmbedSearch.entitlements
       properties:

@@ -26,6 +26,8 @@ curl -fsSL https://raw.githubusercontent.com/wooseungw/embedsearch/main/scripts/
      xattr -dr com.apple.quarantine /Applications/EmbedSearch.app
      ```
 
+**업데이트** — 0.3.0부터는 앱이 하루 한 번 새 버전을 확인해 조용히 받아 두고, 앱을 종료할 때 설치합니다. 받아 둔 업데이트가 설치되지 않은 채로 있으면 7일마다 한 번 묻습니다. 설정 › 업데이트에서 끄거나 지금 확인할 수 있습니다. 0.2.0 이하는 이 기능이 없으니 위 방법으로 한 번 새로 설치해 주세요.
+
 ## 처음 실행할 때
 
 - 메뉴 막대 앱입니다. Dock에는 아이콘이 없고, `⌥Space`로 검색창을 엽니다. 단축키는 설정(`⌘,`)에서 바꿀 수 있습니다.
@@ -46,7 +48,7 @@ scripts/install.sh       # ~/Applications에 설치하고 실행
 ```
 
 - 키체인에 Apple Development 인증서가 있으면 그걸로 서명하고, 없으면 ad hoc으로 서명합니다. ad hoc 서명은 빌드할 때마다 macOS가 권한을 다시 묻습니다. `ADHOC=1`을 주면 인증서가 있어도 ad hoc으로 서명합니다.
-- `scripts/package-release.sh`는 Releases에 올릴 dmg를 만듭니다.
+- `scripts/package-release.sh`는 Releases에 올릴 dmg, 체크섬, 업데이트 피드(`appcast.xml`)를 만듭니다. 세 파일을 `vX.Y.Z` 태그 릴리스에 함께 올리고, 릴리스마다 `project.yml`의 `CFBundleVersion`을 올립니다. 피드는 키체인에 있는 서명 키로 서명합니다(`scripts/make-appcast.sh`).
 - 설계와 모듈 구조는 [`docs/DESIGN.md`](docs/DESIGN.md)에 있습니다.
 
 ## 라이선스
@@ -55,4 +57,5 @@ scripts/install.sh       # ~/Applications에 설치하고 실행
 
 - [EmbeddingGemma 2](https://huggingface.co/mlx-community/embeddinggemma-2-bf16) — Apache-2.0. 앱에 들어 있지 않고, 실행할 때 받습니다.
 - [opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf) — Apache-2.0. 앱에 JAR가 들어 있고, `LICENSE`, `NOTICE`, `THIRD_PARTY`를 함께 넣습니다.
+- [Sparkle](https://github.com/sparkle-project/Sparkle) — MIT. 자동 업데이트에 씁니다.
 - [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm), [GRDB.swift](https://github.com/groue/GRDB.swift), [swift-transformers](https://github.com/huggingface/swift-transformers), [swift-huggingface](https://github.com/huggingface/swift-huggingface), [swift-argument-parser](https://github.com/apple/swift-argument-parser) — 각 저장소의 라이선스를 따릅니다.

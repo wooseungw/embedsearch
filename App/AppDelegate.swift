@@ -16,7 +16,7 @@ enum EmbedSearchMain {
 /// Launch arguments (for testing): `--show` open the panel at launch, `--query <text>` prefill it,
 /// `--onboarding` show the first-launch introduction,
 /// `--no-hotkey` skip global hotkey registration, `--dry-run-actions` log instead of executing,
-/// `--settings [folders|engine]` open Settings at launch, `--mock` the mock search service instead of the engine, `--mock-slow` / `--mock-degraded` mock
+/// `--settings [folders|clipboard|engine|updates]` open Settings at launch, `--mock` the mock search service instead of the engine (and no updates), `--mock-slow` / `--mock-degraded` mock
 /// engine states, `-modelIdleSeconds <n>` release the embedding model after n idle seconds.
 /// URL scheme: `embedsearch://toggle`, `embedsearch://show[?q=…]`, `embedsearch://clipboard`, `embedsearch://hide`,
 /// `embedsearch://settings`, `embedsearch://settings/folders`, `embedsearch://welcome`.
@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let launchAtLogin = LaunchAtLogin()
     private let actions = ActionRunner()
     private let clipboard = ClipboardHistory()
+    private let updater = Updater(enabled: !CommandLine.arguments.contains(where: { $0.hasPrefix("--mock") }))
     private let arguments = CommandLine.arguments
     private let logger = Logger(subsystem: "com.seungwoo.embedsearch", category: "app")
     private var query: QueryController!
@@ -66,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController { [unowned self] navigation in
             SettingsView(settings: self.settings, navigation: navigation, hotKeys: self.hotKeys,
                          clipboardHotKeys: self.clipboardHotKeys, clipboard: self.clipboard,
-                         launchAtLogin: self.launchAtLogin, query: self.query,
+                         launchAtLogin: self.launchAtLogin, updater: self.updater, query: self.query,
                          onPreview: { [weak self] in self?.panel.show() })
         }
         onboarding = OnboardingWindowController(makeView: { [unowned self] finish in
@@ -81,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            settings: { [weak self] in self?.openSettings() },
                            folders: { [weak self] in self?.openSettings(tab: .folders) },
                            onboarding: { [weak self] in self?.onboarding.show() },
+                           checkForUpdates: { [weak self] in self?.updater.checkForUpdates() },
+                           canCheckForUpdates: { [weak self] in self?.updater.canCheckForUpdates ?? false },
                            reindex: { [weak self] in self?.query.refreshIndex() }),
             launchAtLogin: launchAtLogin, settings: settings)
 
@@ -116,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "folders": .folders
             case "engine": .engine
             case "clipboard": .clipboard
+            case "updates": .updates
             default: nil
             }
             DispatchQueue.main.async { [weak self] in self?.openSettings(tab: tab) }

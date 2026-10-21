@@ -2,7 +2,7 @@ import SearchCore
 import SwiftUI
 
 enum SettingsTab: Hashable {
-    case general, folders, clipboard, engine
+    case general, folders, clipboard, engine, updates
 }
 
 /// Which tab the settings window shows (the menu's "검색 폴더…" opens it on `.folders`).
@@ -21,6 +21,7 @@ struct SettingsView: View {
     let clipboardHotKeys: HotKeyController
     let clipboard: ClipboardHistory
     let launchAtLogin: LaunchAtLogin
+    let updater: Updater
     let query: QueryController
     let onPreview: () -> Void
 
@@ -49,6 +50,11 @@ struct SettingsView: View {
                 .formStyle(.grouped)
                 .tabItem { Label("검색 엔진", systemImage: "magnifyingglass") }
                 .tag(SettingsTab.engine)
+
+            Form { updateSection }
+                .formStyle(.grouped)
+                .tabItem { Label("업데이트", systemImage: "arrow.down.circle") }
+                .tag(SettingsTab.updates)
         }
         .padding(.top, 6)
         .frame(width: Self.size.width, height: Self.size.height)
@@ -142,6 +148,21 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("다시 색인") { query.refreshIndex() }
+            }
+        }
+    }
+
+    private var updateSection: some View {
+        Section("업데이트") {
+            Toggle("자동 업데이트", isOn: Binding(get: { updater.isAutomatic }, set: { updater.setAutomatic($0) }))
+            Text("하루 한 번 새 버전을 확인해 받아 두고, 앱을 종료할 때 설치합니다. 받아 둔 업데이트가 설치되지 않은 채로 있으면 7일마다 한 번 묻습니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            LabeledContent("현재 버전", value: updater.version)
+            HStack {
+                Spacer()
+                Button("지금 확인") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
             }
         }
     }
