@@ -86,7 +86,8 @@ struct SearchFoldersView: View {
                 .padding(.vertical, 4)
             }
             ForEach(settings.searchFolders, id: \.self) { path in
-                FolderRow(path: path, entry: summary.folders.first { $0.path == Self.folderKey(path) }) { removal = path }
+                FolderRow(path: path, entry: summary.folders.first { $0.path == Self.folderKey(path) },
+                          onReindex: { reindex(path) }, onRemove: { removal = path })
             }
             HStack {
                 Button("폴더 추가…", action: chooseFolders)
@@ -216,6 +217,17 @@ struct SearchFoldersView: View {
         apply(currentFolders)
     }
 
+    private func reindex(_ path: String) {
+        guard let runtime else { return }
+        Task {
+            do {
+                try await runtime.reindexFiles(in: URL(filePath: path, directoryHint: .isDirectory))
+                await reload()
+                notice = "폴더를 다시 색인했습니다."
+            } catch { notice = "다시 색인하지 못했습니다: \(error.localizedDescription)" }
+        }
+    }
+
     /// Hands the folders to the engine and shows the outcome once its refresh is done (an
     /// unreadable folder changes neither the items nor the engine state).
     private func apply(_ folders: [URL]) {
@@ -275,6 +287,7 @@ struct SearchFoldersView: View {
 private struct FolderRow: View {
     let path: String
     let entry: FileIndexSummary.Folder?
+    let onReindex: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -294,6 +307,9 @@ private struct FolderRow: View {
                     .foregroundStyle(entry?.error == nil ? Color.secondary : Color.red)
             }
             Spacer()
+            Button(action: onReindex) { Image(systemName: "arrow.clockwise") }
+                .buttonStyle(.borderless)
+                .help("이 폴더를 처음부터 다시 색인")
             Button(action: { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) }) {
                 Image(systemName: "magnifyingglass.circle")
             }
@@ -318,6 +334,7 @@ private struct FolderRow: View {
             parts.append("동기화됨")
         }
         if entry.failed > 0 { parts.append("내용을 읽지 못함 \(entry.failed)") }
+        if entry.retrying > 0 { parts.append("자동 재시도 대기 \(entry.retrying)") }
         parts.append(SearchFoldersView.bytes(entry.bytes))
         return parts.joined(separator: " · ")
     }

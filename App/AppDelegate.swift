@@ -84,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            onboarding: { [weak self] in self?.onboarding.show() },
                            checkForUpdates: { [weak self] in self?.updater.checkForUpdates() },
                            canCheckForUpdates: { [weak self] in self?.updater.canCheckForUpdates ?? false },
-                           reindex: { [weak self] in self?.query.refreshIndex() }),
+                           reindex: { [weak self] in self?.reindex() }),
             launchAtLogin: launchAtLogin, settings: settings)
 
         if arguments.contains("--no-hotkey") {
@@ -149,6 +149,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openSettings(tab: SettingsTab? = nil) {
         settingsWindow.show(tab: tab)
+    }
+
+    private func reindex() {
+        guard let runtime = AppServices.runtime else { query.refreshIndex(); return }
+        Task {
+            do { try await runtime.reindexFiles() }
+            catch {
+                logger.error("reindex failed: \(error.localizedDescription, privacy: .public)")
+                NSSound.beep()
+            }
+        }
     }
 
     private func argumentValue(_ name: String) -> String? {

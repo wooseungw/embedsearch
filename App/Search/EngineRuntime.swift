@@ -27,6 +27,7 @@ final class EngineRuntime {
     private let configuration: MLXEmbedderConfiguration
     private let defaults: UserDefaults
     private var embedder: OnDemandEmbedder?
+    private var imageEmbedder: OnDemandImageEmbedder?
     private var startup: Task<Void, Never>?
     private var watcher: FolderWatcher?
     private var watchGeneration = 0
@@ -49,6 +50,11 @@ final class EngineRuntime {
         guard startup == nil else { return }
         watch()
         startup = Task {
+            do {
+                let days = defaults.integer(forKey: "searchHistoryRetentionDays")
+                try await engine.setHistoryPolicy(enabled: defaults.object(forKey: "searchHistoryEnabled") as? Bool ?? true,
+                                                  retentionDays: days > 0 ? days : 30)
+            } catch { logger.error("history policy: \(error.localizedDescription, privacy: .public)") }
             await engine.setFileFolders(folders)
             await setUpPDFReader()
             let known = rememberedInfo()
@@ -102,6 +108,10 @@ final class EngineRuntime {
         Task { await engine.refresh() }
     }
 
+    func reindexFiles(in folder: URL? = nil) async throws {
+        try await engine.reindexFiles(in: folder)
+    }
+
     func fileSummary() async -> FileIndexSummary {
         await engine.fileIndexSummary()
     }
@@ -136,12 +146,14 @@ final class EngineRuntime {
     /// load that failed, on any power.
     func prepare() {
         if let embedder {
-            let engine = engine, ahead = PowerSource.allowsWorkAhead
+            let engine = engine, ahead = PowerSource.allowsWorkAhead, vision = imageEmbedder
             Task {
-                // Not while indexing: that holds the vision model (~0.9 GB), which embeds texts
-                // too, so the text model would only sit next to it.
+                // Not while indexing or while the vision model is still there: that one (~0.9 GB)
+                // embeds the queries meanwhile (`OnDemandEmbedder.standIn`), so the text model
+                // would only sit next to it.
                 let indexing = if case .indexing = await engine.currentState { true } else { false }
-                if ahead, !indexing {
+                let visionLoaded = await vision?.isLoaded ?? false
+                if ahead, !indexing, !visionLoaded {
                     await embedder.prepare()
                 } else {
                     await embedder.keepAlive()
@@ -186,19 +198,27 @@ final class EngineRuntime {
     }
 
     private func install(info: EmbeddingModelInfo, preloaded: MLXTextEmbedder?) async {
-        let embedder = makeEmbedder(info: info, preloaded: preloaded)
+        let imageEmbedder = makeImageEmbedder(info: info)
+        let embedder = makeEmbedder(info: info, preloaded: preloaded, standIn: imageEmbedder)
+        self.imageEmbedder = imageEmbedder
         self.embedder = embedder
         // Before the text embedder: installing that one indexes pending files, which uses this.
-        await engine.setImageEmbedder(makeImageEmbedder(info: info))
+        await engine.setImageEmbedder(imageEmbedder)
         await engine.setEmbedder(embedder)
     }
 
+    /// The vision model holds the text weights too and embeds every text while it is loaded
+    /// (`OnDemandEmbedder.standIn`), so the text model goes when it comes: both held ~1.6 GB of
+    /// GPU memory plus a tokenizer each. Releasing fails while a text embedding runs, so it is
+    /// tried again once the vision model is in.
     private func makeImageEmbedder(info: EmbeddingModelInfo) -> OnDemandImageEmbedder {
         let configuration = configuration, logger = logger
-        return OnDemandImageEmbedder(info: info, idleTimeout: visionIdleTimeout, load: {
+        return OnDemandImageEmbedder(info: info, idleTimeout: visionIdleTimeout, load: { [weak self] in
+            await self?.releaseTextModel()
             let start = ContinuousClock.now
             let model = try await MLXImageEmbedder.load(configuration)
             logger.info("vision model loaded in \(ContinuousClock.now - start)")
+            await self?.releaseTextModel()
             return model
         }, didUnload: {
             MLXTextEmbedder.releaseCachedMemory()
@@ -206,9 +226,15 @@ final class EngineRuntime {
         })
     }
 
-    private func makeEmbedder(info: EmbeddingModelInfo, preloaded: MLXTextEmbedder?) -> OnDemandEmbedder {
+    private func releaseTextModel() async {
+        guard let embedder, await embedder.unload() else { return }
+        logger.info("text model released for the vision model")
+    }
+
+    private func makeEmbedder(info: EmbeddingModelInfo, preloaded: MLXTextEmbedder?,
+                              standIn: OnDemandImageEmbedder) -> OnDemandEmbedder {
         let configuration = configuration, logger = logger
-        return OnDemandEmbedder(info: info, idleTimeout: idleTimeout, preloaded: preloaded, load: { [weak self] in
+        return OnDemandEmbedder(info: info, idleTimeout: idleTimeout, preloaded: preloaded, standIn: standIn, load: { [weak self] in
             let start = ContinuousClock.now
             let model: MLXTextEmbedder
             do {

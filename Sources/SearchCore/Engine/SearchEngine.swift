@@ -68,6 +68,12 @@ public actor SearchEngine: SearchService {
     private var refreshAgain = false
     private var queryVectorCache: [String: [Float]] = [:]
     private var queryVectorOrder: [String] = []
+    private let now: @Sendable () -> Date
+    private var fileRetryTask: Task<Void, Never>?
+    private var historyEnabled = true
+    private var historyRetentionDays = 30
+    private var historyGeneration = 0
+    private var historyLastPruned: Date?
 
     /// Folders whose images and PDFs are searchable.
     public private(set) var fileFolders: [URL] = []
@@ -106,11 +112,12 @@ public actor SearchEngine: SearchService {
     public private(set) var storesQueryVectors = true
 
     public init(store: IndexStore, embedder: (any TextEmbedder)?, sources: [any ItemSource],
-                config: RankingConfig = .default) {
+                config: RankingConfig = .default, now: @escaping @Sendable () -> Date = { Date() }) {
         self.store = store
         self.embedder = embedder
         self.sources = sources
         self.config = config
+        self.now = now
     }
 
     /// Engine over the default database location and the default sources.
@@ -121,6 +128,37 @@ public actor SearchEngine: SearchService {
     // MARK: Configuration
 
     public func setConfig(_ config: RankingConfig) { self.config = config }
+
+    /// Saving off also disables personal ranking and on-disk query vectors; RAM query caching remains available.
+    public func setHistoryPolicy(enabled: Bool, retentionDays: Int) throws {
+        let days = min(365, max(1, retentionDays))
+        historyGeneration += 1
+        historyEnabled = enabled
+        historyRetentionDays = days
+        if !enabled { usage = [:]; memory = QueryMemoryIndex() }
+        queryVectorCache.removeAll()
+        queryVectorOrder.removeAll()
+        try store.pruneHistory(before: now().addingTimeInterval(-Double(days) * 86_400))
+        refreshUsage()
+    }
+
+    public func clearHistory() throws {
+        historyGeneration += 1 // an embedding already awaiting the model cannot repopulate the cache
+        try store.resetUsage()
+        usage.removeAll()
+        memory = QueryMemoryIndex()
+        queryVectorCache.removeAll()
+        queryVectorOrder.removeAll()
+    }
+
+    private func expireHistoryIfNeeded() {
+        if historyLastPruned.map({ now().timeIntervalSince($0) >= 3_600 || now() < $0 }) ?? true {
+            historyGeneration += 1
+            queryVectorCache.removeAll()
+            queryVectorOrder.removeAll()
+            refreshUsage()
+        }
+    }
 
     /// Installs (or removes) the embedder, e.g. after the App finished loading the model in the
     /// background. Embeds whatever is missing from the cache — through `refreshWithStats`, so it
@@ -156,11 +194,33 @@ public actor SearchEngine: SearchService {
 
     /// Files indexed without their images are read again at the next indexing.
     private func redoPartialFiles() {
-        let partial = Set(fileRecords.filter(\.value.partial).keys)
+        let partial = Set(fileRecords.filter { needsFileRetry($0.value) }.keys)
         guard !partial.isEmpty else { return }
         let redo = Set(zip(items, hashes).filter { $0.0.kind == .file && partial.contains($0.1) }.map(\.0.id))
         indexedFiles.subtract(redo)
         chunks?.removeAll { redo.contains($0) }
+    }
+
+    private func needsFileRetry(_ record: FileIndexRecord) -> Bool {
+        if record.retryable { return record.shouldRetry(at: now()) && imagesUsable }
+        return record.partial && imageEmbedder != nil && imagesUsable
+    }
+
+    /// A forced rebuild waits for the current indexing job before invalidating selected versions.
+    public func reindexFiles(in folder: URL? = nil) async throws {
+        while let running = runningRefresh { _ = await running.value }
+        let selected = items.indices.filter { p in
+            items[p].kind == .file && (folder.map { FileScanner.folder(of: Self.filePath(items[p]), in: [$0]) != nil } ?? true)
+        }
+        let versions = Set(selected.map { hashes[$0] })
+        // Other paths may share this cached version. They must receive its rebuilt chunks too.
+        let dropped = Set(items.indices.filter { items[$0].kind == .file && versions.contains(hashes[$0]) }.map { items[$0].id })
+        try store.invalidateFiles(hashes: versions)
+        indexedFiles.subtract(dropped)
+        chunks?.removeAll { dropped.contains($0) }
+        for hash in versions { fileRecords.removeValue(forKey: hash) }
+        imagesUnavailableUntil = nil
+        await refresh()
     }
 
     /// Reads PDFs with opendataloader-pdf from now on (nil: PDFKit).
@@ -409,6 +469,9 @@ public actor SearchEngine: SearchService {
     }
 
     private func refreshUsage() {
+        try? store.pruneHistory(before: now().addingTimeInterval(-Double(historyRetentionDays) * 86_400))
+        historyLastPruned = now()
+        guard historyEnabled else { usage = [:]; memory = QueryMemoryIndex(); return }
         usage = (try? store.usageRecords()) ?? [:]
         memory = QueryMemoryIndex((try? store.queryMemoryRecords()) ?? [])
     }
@@ -521,16 +584,18 @@ public actor SearchEngine: SearchService {
         for (p, item) in items.enumerated() where item.kind == .file && !indexedFiles.contains(item.id) {
             guard only?.contains(item.id) ?? true else { continue }
             let hash = hashes[p]
-            if let record = stored[hash], !(record.partial && imageEmbedder != nil && imagesUsable) {
+            if let record = stored[hash], !needsFileRetry(record) {
                 idsOfHash[hash, default: []].append(item.id)
                 fileRecords[hash] = record
             } else {
+                if let record = stored[hash] { fileRecords[hash] = record }
                 unknown.append(p)
             }
         }
         guard !idsOfHash.isEmpty else { return unknown }
         var index = chunks ?? ChunkIndex(dimensions: info.dimensions)
         chunks = nil  // sole owner: grows in place
+        index.reserveCapacity(forAdditionalRows: idsOfHash.reduce(0) { $0 + (stored[$1.key]?.chunks ?? 0) * $1.value.count })
         try? store.forEachFileChunk(hashes: Set(idsOfHash.keys), modelKey: key, dimensions: info.dimensions) { hash, kind, hub, page, bytes in
             for id in idsOfHash[hash] ?? [] { index.append(itemID: id, kind: kind, hub: hub, page: page, float16: bytes) }
         }
@@ -552,7 +617,7 @@ public actor SearchEngine: SearchService {
         }
         if let until = imagesUnavailableUntil, ContinuousClock.now >= until { imagesUnavailableUntil = nil }
         // Files indexed without their images get them now that images can be embedded.
-        if imageEmbedder != nil, imagesUsable { redoPartialFiles() }
+        redoPartialFiles()
         let unknown = loadStoredFiles(info, only: nil)
         var order: [String] = []
         var file: [String: (path: String, title: String?)] = [:]
@@ -576,8 +641,26 @@ public actor SearchEngine: SearchService {
         let current = Set(zip(items, hashes).filter { $0.0.kind == .file }.map(\.1))
         fileRecords = fileRecords.filter { current.contains($0.key) }
         _ = try? store.pruneFileIndex(keeping: current, modelKey: info.cacheKey)
+        // Appends and removals leave the vector array up to ~2.5× its rows.
+        if var index = chunks {
+            chunks = nil  // sole owner: no second copy
+            index.shrinkToFit()
+            chunks = index
+        }
         stats.fileChunks = chunks?.rowCount ?? 0
         stats.fileSeconds = Date().timeIntervalSince(start)
+        scheduleFileRetry()
+    }
+
+    private func scheduleFileRetry() {
+        fileRetryTask?.cancel()
+        let dates = fileRecords.values.filter { $0.retryable && $0.retryCount < 3 }.compactMap(\.retryAfter)
+        guard let next = dates.min() else { return }
+        let wait = max(1, next.timeIntervalSince(now()))
+        fileRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+            await self?.refresh()
+        }
     }
 
     /// Reads file versions `order` (content hash → path) again for their text alone and stores it
@@ -709,7 +792,6 @@ public actor SearchEngine: SearchService {
                 if !anyEmbedded, let lastError {
                     stats.embeddingError = String(describing: lastError)
                     semanticFailure = "Embedding failed: \(lastError.localizedDescription)"
-                    break
                 }
             }
             var fileChunks = [[FileChunk]](repeating: [], count: batch.count)
@@ -745,23 +827,34 @@ public actor SearchEngine: SearchService {
                 }
             }
 
-            // A file is redone later (partial) when its images were skipped, or failed while the
-            // vision model was not known to work; an image that fails while others embed is the
-            // image's own problem and is not retried.
+            // Inference failures are retryable even when another file succeeded. Parsing errors
+            // remain stable until the file changes or the user explicitly rebuilds the folder.
             var saved: [(hash: String, record: FileIndexRecord, chunks: [FileChunk])] = []
             // Text is kept for keyword search even where it could not be embedded.
             var savedTexts: [String: [FileContent.Text]] = [:]
             for (i, hash) in batch.enumerated() where !contents[i].unavailable {
                 savedTexts[hash] = contents[i].texts
-                let partial = imagesSkipped[i] || (imageFailed[i] && (vision.gaveUp || !vision.imagesWorked))
+                let retryable = imageFailed[i] || textVectors[i] == nil
+                let partial = imagesSkipped[i] || retryable
                 var error = contents[i].error
                 if error == nil, fileChunks[i].isEmpty {
                     error = textVectors[i] == nil ? "text could not be embedded" : imageFailed[i] ? "image could not be embedded" : nil
                 }
-                saved.append((hash, FileIndexRecord(chunks: fileChunks[i].count, partial: partial, error: partial ? nil : error),
+                if retryable, error == nil { error = imageFailed[i] ? "image could not be embedded" : "text could not be embedded" }
+                let attempts = retryable ? (fileRecords[hash]?.retryCount ?? 0) + 1 : 0
+                let interval = imageRetryInterval.components
+                let seconds = max(0, Double(interval.seconds) + Double(interval.attoseconds) / 1e18)
+                let retryAfter = retryable ? now().addingTimeInterval(seconds * pow(2, Double(min(attempts - 1, 8)))) : nil
+                saved.append((hash, FileIndexRecord(chunks: fileChunks[i].count, partial: partial, error: error,
+                                                  retryable: retryable, retryCount: attempts, retryAfter: retryAfter),
                               fileChunks[i]))
             }
-            try? store.saveFileChunks(saved, texts: savedTexts, modelKey: key)
+            do { try store.saveFileChunks(saved, texts: savedTexts, modelKey: key) }
+            catch {
+                stats.sourceErrors["store"] = String(describing: error)
+                semanticFailure = "Could not save file index: \(error.localizedDescription)"
+                break
+            }
             // Files (or the model) can change while we were suspended: index only the items that
             // still have these versions, under this model.
             if var index = chunks, index.dimensions == info.dimensions, self.embedder?.info.cacheKey == key {
@@ -901,6 +994,7 @@ public actor SearchEngine: SearchService {
     // MARK: Search
 
     public func instantSearch(_ query: String, limit: Int) async -> [SearchResult] {
+        expireHistoryIfNeeded()
         let analysis = QueryAnalyzer.analyze(query)
         guard !analysis.normalized.isEmpty else { return [] }
         let lex = lexical.search(analysis, limit: max(0, config.lexicalCandidates))
@@ -913,6 +1007,7 @@ public actor SearchEngine: SearchService {
 
     /// Search with an explicit mode (CLI / evaluation). `.semantic` ranks by cosine only.
     public func search(_ query: String, mode: SearchMode, limit: Int) async throws -> [SearchResult] {
+        expireHistoryIfNeeded()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let analysis = QueryAnalyzer.analyze(trimmed)
         guard !analysis.normalized.isEmpty else { return [] }
@@ -937,7 +1032,7 @@ public actor SearchEngine: SearchService {
         var frecency: [String: Double] = [:]
         var memoryBoosts: [String: Double] = [:]
         if config.useUsageSignals, mode != .semantic {
-            let now = Date()
+            let now = now()
             memoryBoosts = memory.boosts(query: analysis.normalized, now: now, config: config)
             if !usage.isEmpty {
                 for id in Set(lex.map(\.itemID)).union(memoryBoosts.keys)
@@ -978,9 +1073,10 @@ public actor SearchEngine: SearchService {
         let dimensions = itemRows > 0 ? vectors!.dimensions : chunks!.dimensions
         let qv: [Float]
         let key = embedder.info.cacheKey
+        let historyEpoch = historyGeneration
         if let cached = queryVectorCache[query] {
             qv = cached
-        } else if storesQueryVectors, let stored = try? store.queryVector(query, modelKey: key), stored.count == dimensions {
+        } else if storesQueryVectors, historyEnabled, let stored = try? store.queryVector(query, modelKey: key, now: now()), stored.count == dimensions {
             // Searched before (maybe in an earlier run): no model load.
             qv = stored
             rememberQueryVector(query, stored)
@@ -992,11 +1088,14 @@ public actor SearchEngine: SearchService {
                 // At stored precision, so a query ranks exactly the same whether its vector came
                 // from the model or, in a later search, from the store.
                 let v = IndexStore.storedPrecision(fresh)
-                if storesQueryVectors { try? store.saveQueryVector(v, query: query, modelKey: key) }
+                try Task.checkCancellation()
                 // The embedder was replaced while we were suspended: the vector is of the old space.
                 guard self.embedder?.info.cacheKey == key else { return nil }
                 qv = v
-                rememberQueryVector(query, v)
+                if historyEpoch == historyGeneration {
+                    if storesQueryVectors, historyEnabled { try? store.saveQueryVector(v, query: query, modelKey: key, now: now()) }
+                    rememberQueryVector(query, v)
+                }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -1082,9 +1181,11 @@ public actor SearchEngine: SearchService {
     // MARK: Usage
 
     public func recordSelection(itemID: String, query: String) async {
+        expireHistoryIfNeeded()
+        guard historyEnabled else { return }
         do {
             // Apply the two rows the store wrote instead of re-reading both tables.
-            let written = try store.recordSelection(itemID: itemID, query: query, halfLife: config.frecencyHalfLife)
+            let written = try store.recordSelection(itemID: itemID, query: query, at: now(), halfLife: config.frecencyHalfLife)
             usage[itemID] = written.usage
             if let m = written.memory { memory.upsert(m) }
         } catch {

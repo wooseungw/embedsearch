@@ -48,6 +48,13 @@ public actor OnDemandModel<Model: Sendable> {
         return try await body(model)
     }
 
+    /// Runs `body` with the model if one is loaded or being loaded (waiting for that load);
+    /// returns nil without starting a load otherwise.
+    public func useIfLoaded<R: Sendable>(_ body: @Sendable (Model) async throws -> R) async throws -> R? {
+        guard model != nil || loading != nil else { return nil }
+        return try await use(body)
+    }
+
     /// Starts loading in the background if needed (so a later `use` does not wait for the whole
     /// load) and restarts the idle clock. Within `failedLoadPause` of a failed load it starts none:
     /// a `use` still retries at once, but loads ahead of need do not repeat a failing one.
@@ -148,14 +155,22 @@ public actor OnDemandModel<Model: Sendable> {
 /// the model is unloaded; only embedding a query or a new item loads it. A load whose `info`
 /// differs from the expected one fails with `OnDemandEmbedderError.modelChanged`: its vectors would
 /// not be comparable with the cached ones.
+///
+/// While its model is not loaded, texts go to `standIn` if that one is loaded (or loading): the
+/// vision model, which embeds text into the same space, so a query during indexing does not load a
+/// second copy of the text weights next to it (~0.8 GB).
 public struct OnDemandEmbedder: TextEmbedder {
     public let info: EmbeddingModelInfo
     public let model: OnDemandModel<any TextEmbedder>
+    /// Nil when none was given, or when its `info` is not `info`.
+    public let standIn: OnDemandImageEmbedder?
 
     public init(info: EmbeddingModelInfo, idleTimeout: Duration, preloaded: (any TextEmbedder)? = nil,
+                standIn: OnDemandImageEmbedder? = nil,
                 load: @escaping @Sendable () async throws -> any TextEmbedder,
                 didUnload: @escaping @Sendable () -> Void = {}) {
         self.info = info
+        self.standIn = standIn?.info == info ? standIn : nil
         model = OnDemandModel(idleTimeout: idleTimeout, preloaded: preloaded, load: {
             let loaded = try await load()
             try OnDemandEmbedderError.check(loaded.info, expected: info)
@@ -165,6 +180,15 @@ public struct OnDemandEmbedder: TextEmbedder {
 
     public func embed(_ inputs: [EmbeddingInput]) async throws -> [[Float]] {
         if inputs.isEmpty { return [] }
+        if let standIn, !(await model.isLoaded) {
+            do {
+                if let vectors = try await standIn.embedIfLoaded(inputs) { return vectors }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // The stand-in failed (e.g. its load did): this model does the work.
+            }
+        }
         return try await model.use { try await $0.embed(inputs) }
     }
 
@@ -200,6 +224,12 @@ public struct OnDemandImageEmbedder: ImageEmbedder {
     public func embed(_ inputs: [EmbeddingInput]) async throws -> [[Float]] {
         if inputs.isEmpty { return [] }
         return try await model.use { try await $0.embed(inputs) }
+    }
+
+    /// Embeds `inputs` if the model is loaded or being loaded; nil (no load) otherwise.
+    public func embedIfLoaded(_ inputs: [EmbeddingInput]) async throws -> [[Float]]? {
+        if inputs.isEmpty { return [] }
+        return try await model.useIfLoaded { try await $0.embed(inputs) }
     }
 
     @discardableResult public func unload() async -> Bool { await model.unload() }

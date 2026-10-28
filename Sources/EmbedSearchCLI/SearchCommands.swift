@@ -2,6 +2,7 @@ import ArgumentParser
 import EmbedCore
 import EmbedMLX
 import Foundation
+import CryptoKit
 import SearchCore
 
 // Owner: search track. `index`, `search`, `eval` subcommands.
@@ -22,7 +23,7 @@ struct SearchEngineOptions: ParsableArguments {
     @Flag(help: "Skip `shortcuts list`.")
     var noShortcuts = false
 
-    @Option(help: "MLX buffer cache limit in MB (default: MLXEmbedderConfiguration's).")
+    @Option(help: "MLX buffer cache limit in MB, for the text and the vision model (default: MLXEmbedderConfiguration's).")
     var cacheLimitMB: Int?
 
     @Option(name: .customLong("folder"), help: "Also search the images and PDFs in this folder (repeatable).")
@@ -80,7 +81,10 @@ struct SearchEngineOptions: ParsableArguments {
         if let fileKeywordMaxItemNameScore { config.fileKeywordMaxItemNameScore = fileKeywordMaxItemNameScore }
         var embedder: (any TextEmbedder)?
         var configuration = MLXEmbedderConfiguration(modelID: modelID, dimensions: dimensions)
-        if let cacheLimitMB { configuration.cacheLimit = cacheLimitMB * 1024 * 1024 }
+        if let cacheLimitMB {
+            configuration.cacheLimit = cacheLimitMB * 1024 * 1024
+            configuration.visionCacheLimit = cacheLimitMB * 1024 * 1024
+        }
         if !noModel {
             let start = Date()
             embedder = try await MLXTextEmbedder.load(configuration)
@@ -372,6 +376,12 @@ struct EvalCommand: AsyncParsableCommand {
     @Option(help: "Print at most this many failures per mode.")
     var maxFailures = 60
 
+    @Flag(help: "Use the legacy fixed fusion weights for a controlled baseline comparison.")
+    var fixedFusion = false
+
+    @Option(help: "Write per-query results, execution errors and corpus/model fingerprints as JSON.")
+    var json: String?
+
     @Flag(help: "Coordinate-descent tuning of fusion weights on odd lines, reported on even (held-out) lines.")
     var tune = false
 
@@ -390,6 +400,7 @@ struct EvalCommand: AsyncParsableCommand {
         let queries = try EvalSet.load(URL(filePath: file))
         var config = RankingConfig.default
         config.useUsageSignals = false
+        config.adaptiveFusion = !fixedFusion
         if let minCosine { config.minSemanticCosine = minCosine }
         if let lexicalScoreWeight { config.lexicalScoreWeight = lexicalScoreWeight }
         if let semanticWeight { config.semanticRRFWeight = semanticWeight }
@@ -422,6 +433,36 @@ struct EvalCommand: AsyncParsableCommand {
         }
         printSummary(reports)
         for r in reports { printBreakdown(r); printFailures(r, limit: maxFailures) }
+        if let json {
+            let rows: [[String: Any]] = reports.map { report in
+                ["mode": report.mode.rawValue, "mrr10": report.overall.mrr10,
+                 "success1": report.overall.success1, "success5": report.overall.success5,
+                 "executionErrors": report.outcomes.filter { $0.error != nil }.count,
+                 "outcomes": report.outcomes.map { outcome -> [String: Any] in
+                    ["query": outcome.query.q, "type": outcome.query.type, "lang": outcome.query.lang,
+                     "rank": outcome.rank.map { $0 as Any } ?? NSNull(), "latencySeconds": outcome.latency,
+                     "error": outcome.error.map { $0 as Any } ?? NSNull(),
+                     "expectNone": outcome.query.expectNone ?? false,
+                     "expected": outcome.query.expect.map(\.description),
+                     "top": outcome.top.map { result -> [String: Any] in
+                        ["id": result.id, "title": result.item.title, "kind": result.item.kind.rawValue,
+                         "cosine": result.breakdown.cosine.map { $0 as Any } ?? NSNull(),
+                         "lexicalScore": result.breakdown.lexicalScore.map { $0 as Any } ?? NSNull()]
+                     }]
+                 }]
+            }
+            let corpus = items.map { $0.id + ":" + IndexStore.contentHash($0) }.sorted().joined(separator: "\n")
+            func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+            let document: [String: Any] = [
+                "schemaVersion": 1, "corpusCount": items.count, "corpusSHA256": digest(Data(corpus.utf8)),
+                "queriesSHA256": digest(try Data(contentsOf: URL(filePath: file))),
+                "modelKey": (await engine.embeddingInfo)?.cacheKey ?? "none", "unmatched": unmatched,
+                "ranking": try JSONSerialization.jsonObject(with: JSONEncoder().encode(config)),
+                "cacheProtocol": "Modes run in order, sharing the in-memory query cache; CLI disables persisted query vectors.",
+                "reports": rows]
+            try JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys])
+                .write(to: URL(filePath: json), options: .atomic)
+        }
     }
 
     private func parseMode(_ s: String) throws -> SearchMode {

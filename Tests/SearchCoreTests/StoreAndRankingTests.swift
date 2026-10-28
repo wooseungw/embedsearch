@@ -311,3 +311,30 @@ struct RankingTests {
         #expect(out.first?.itemID == "setting:com.apple.Keyboard-Settings.extension#Shortcuts")
     }
 }
+
+extension IndexStoreTests {
+    @Test func v8MigrationPreservesChunksAndMakesLegacyEmbeddingErrorsRetryable() throws {
+        let folder = try TempDir(), url = folder.url.appending(path: "legacy.sqlite")
+        let queue = try DatabaseQueue(path: url.path)
+        try IndexStore.migrator.migrate(queue, upTo: "v8-card-text-no-page")
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO model (id, key) VALUES (1, 'legacy')")
+            try db.execute(sql: "INSERT INTO fileIndexed (modelId,fileHash,chunks,partial,error,indexedAt,hasText) VALUES (1,'good',1,0,NULL,0,1), (1,'failed',0,0,'image could not be embedded',0,1)")
+            try db.execute(sql: "INSERT INTO fileChunk (modelId,fileHash,seq,kind,hub,vector,page) VALUES (1,'good',0,0,0,?,2)", arguments: [IndexStore.float16Data([1, 0])])
+            try db.execute(sql: "INSERT INTO fileText (id,fileHash,seq,page) VALUES (1,'good',0,2)")
+            try db.execute(sql: "INSERT INTO fileTextIndex (rowid,tokens) VALUES (1,'orchard')")
+        }
+        try queue.close()
+        let store = try IndexStore(url: url)
+        let records = try store.fileIndexRecords(modelKey: "legacy")
+        #expect(records["good"]?.chunks == 1)
+        #expect(records["failed"]?.shouldRetry(at: Date()) == true)
+        #expect(try store.keywordMatches(words: [["orchard"]], chunks: 10).first?.fileHash == "good")
+        var count = 0
+        try store.forEachFileChunk(hashes: ["good"], modelKey: "legacy", dimensions: 2) { _, _, _, page, _ in
+            count += 1
+            #expect(page == 2)
+        }
+        #expect(count == 1)
+    }
+}

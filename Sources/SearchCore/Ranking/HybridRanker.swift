@@ -101,6 +101,15 @@ public enum HybridRanker {
         }
         // Candidates live in an array; the dictionary only maps an id to its slot.
         var accs: [Acc] = []
+        let weakLexical = config.adaptiveFusion && mode == .hybrid && inputSemantic != nil
+            && !Hangul.isChoseongQuery(analysis.normalized)
+            && (lexical.map(\.score).max() ?? 0) < config.confidentLexicalScore
+        let lexicalRRFWeight = config.lexicalRRFWeight * (weakLexical ? 0.25 : 1)
+        let lexicalScoreWeight = weakLexical ? 0 : config.lexicalScoreWeight
+        // File lists have their own calibrated score scale; don't boost item-only semantics over them.
+        let emphasizeSemantic = weakLexical && fileSemantic.isEmpty && fileKeyword.isEmpty
+        let semanticRRFWeight = config.semanticRRFWeight * (emphasizeSemantic ? 1.25 : 1)
+        let cosineWeight = emphasizeSemantic ? max(config.cosineWeight, 0.1) : config.cosineWeight
         var slots: [String: Int] = [:]
         let capacity = lexical.count + (inputSemantic?.count ?? 0) + fileSemantic.count + fileKeyword.count + memory.count
         accs.reserveCapacity(capacity)
@@ -173,13 +182,13 @@ public enum HybridRanker {
                 bits = Signals.semantic
             } else {
                 if let r = a.lexRank {
-                    score += config.lexicalRRFWeight * rrf(rank: r, k: config.rrfK)
-                    score += config.lexicalScoreWeight * (a.lexScore ?? 0)
+                    score += lexicalRRFWeight * rrf(rank: r, k: config.rrfK)
+                    score += lexicalScoreWeight * (a.lexScore ?? 0)
                     bits |= Signals.lexical
                 }
                 if let r = a.semRank {
-                    score += config.semanticRRFWeight * rrf(rank: r, k: config.rrfK)
-                    score += config.cosineWeight * max(0, (a.cosine ?? 0) - config.cosineFloor)
+                    score += semanticRRFWeight * rrf(rank: r, k: config.rrfK)
+                    score += cosineWeight * max(0, (a.cosine ?? 0) - config.cosineFloor)
                     bits |= Signals.semantic
                 }
                 if let r = a.fileRank {

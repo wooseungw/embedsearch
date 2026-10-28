@@ -267,6 +267,46 @@ struct ChunkIndexTests {
         #expect(hits.map(\.itemID) == ["i0", "i1", "i2"])
     }
 
+    @Test func reservedAndShrunkCapacityFollowsTheRows() {
+        let d = 64
+        func vector(_ i: Int) -> [Float] {
+            var v = [Float](repeating: 0, count: d)
+            v[i % d] = 1
+            v[(i + 3) % d] = Float(i % 7) / 7
+            return VectorMath.normalized(v)
+        }
+        /// What an array reserved for exactly `rows` rows holds (malloc rounds sizes up).
+        func exactBytes(rows: Int) -> Int {
+            var probe: [UInt16] = []
+            probe.reserveCapacity(rows * d)
+            return probe.capacity * MemoryLayout<UInt16>.size
+        }
+        // Reserved up front: the rows fit without the arrays doubling.
+        var reserved = ChunkIndex(dimensions: d)
+        reserved.reserveCapacity(forAdditionalRows: 3000)
+        for i in 0..<3000 { reserved.append(itemID: "i\(i % 900)", kind: .text, hub: 0.01 * Float(i % 5), page: i % 4, vector: vector(i)) }
+        #expect(reserved.vectorCapacityBytes == exactBytes(rows: 3000))
+
+        // Grown one append at a time, then a third removed: shrinking gives the spare room back
+        // and changes no result.
+        var grown = ChunkIndex(dimensions: d)
+        for i in 0..<3000 { grown.append(itemID: "i\(i % 900)", kind: .text, hub: 0.01 * Float(i % 5), page: i % 4, vector: vector(i)) }
+        grown.removeAll { $0.hasSuffix("1") || $0.hasSuffix("5") || $0.hasSuffix("7") }
+        let query = vector(11)
+        let before = grown.search(query, k: 20, hubWeight: 0.3)
+        let rows = grown.rowCount
+        #expect(grown.vectorCapacityBytes > exactBytes(rows: rows) * 9 / 8)
+        grown.shrinkToFit()
+        #expect(grown.rowCount == rows)
+        #expect(grown.vectorCapacityBytes == exactBytes(rows: rows))
+        #expect(grown.search(query, k: 20, hubWeight: 0.3) == before)
+        grown.shrinkToFit()  // nothing to give back: no copy, same results
+        #expect(grown.search(query, k: 20, hubWeight: 0.3) == before)
+        let unique = VectorMath.normalized([Float](repeating: 1, count: d))
+        grown.append(itemID: "new", kind: .image, hub: 0, vector: unique)
+        #expect(grown.search(unique, k: 1, hubWeight: 0).first?.itemID == "new")
+    }
+
     @Test func storeRoundTripsAndPrunesFileChunks() throws {
         let store = try IndexStore.inMemory()
         let a = String(repeating: "a", count: 64), b = String(repeating: "b", count: 64)
@@ -300,8 +340,8 @@ struct ChunkIndexTests {
 @Suite("File search in the engine")
 struct FileEngineTests {
     private func makeEngine(_ store: IndexStore, _ embedder: any TextEmbedder, images: FakeImageEmbedder?,
-                            folder: TempFolder) async -> SearchEngine {
-        let engine = SearchEngine(store: store, embedder: embedder, sources: [StaticItemSource(items: fixtureItems)])
+                            folder: TempFolder, now: @escaping @Sendable () -> Date = { Date() }) async -> SearchEngine {
+        let engine = SearchEngine(store: store, embedder: embedder, sources: [StaticItemSource(items: fixtureItems)], now: now)
         var extractor = FileContentExtractor()
         extractor.recognizeText = false
         await engine.setFileContentExtractor(extractor)
@@ -404,31 +444,34 @@ struct FileEngineTests {
         #expect(try store.fileIndexRecords(modelKey: embedder.info.cacheKey).values.first?.partial == false)
     }
 
-    @Test func anImageThatFailsAloneIsNotRetried() async throws {
+    @Test func aTransientImageFailureIsRetriedWithoutReembeddingSuccessfulFiles() async throws {
         let folder = try TempFolder()
         defer { folder.cleanUp() }
         for name in ["a", "b", "c", "d"] { try folder.writePNG("\(name).png") }
         let store = try IndexStore.inMemory()
         let embedder = FakeEmbedder()
-        // The first image fails, the others embed: that image's own problem.
+        // One failed image must not be classified as permanently broken because others worked.
         let images = FakeImageEmbedder(text: embedder, label: "x", failFirst: 1)
         let engine = await makeEngine(store, embedder, images: images, folder: folder)
+        await engine.setImageRetryInterval(.zero)
         let first = await engine.refreshWithStats()
         #expect(first.filesIndexed == 4 && first.fileChunks == 3)
         let records = try store.fileIndexRecords(modelKey: embedder.info.cacheKey).values
-        #expect(records.filter { $0.error != nil && !$0.partial }.count == 1)
+        #expect(records.filter { $0.error != nil && $0.retryable && $0.retryCount == 1 }.count == 1)
         await engine.refresh()
-        #expect(images.calls == 4)
+        #expect(images.calls == 5)
+        #expect(await engine.fileChunkCount == 4)
     }
 
     @Test func aFailingVisionModelIsRetriedAfterItsCooldown() async throws {
+        let clock = TestClock()
         let folder = try TempFolder()
         defer { folder.cleanUp() }
         for name in ["a", "b", "c", "d"] { try folder.writePNG("\(name).png") }
         let store = try IndexStore.inMemory()
         let embedder = FakeEmbedder()
         let images = FakeImageEmbedder(text: embedder, label: "x", failAll: true)
-        let engine = await makeEngine(store, embedder, images: images, folder: folder)
+        let engine = await makeEngine(store, embedder, images: images, folder: folder, now: { clock.now() })
         await engine.refresh()
         // Given up after three failures in a row: every file waits for its images.
         #expect(images.calls == 3)
@@ -437,6 +480,7 @@ struct FileEngineTests {
         #expect(images.calls == 3)  // still cooling down
 
         images.failAll = false
+        clock.advance(601)
         await engine.setImageRetryInterval(.zero)
         await engine.setImageEmbedder(images)
         let retried = await engine.refreshWithStats()
@@ -612,5 +656,112 @@ final class PoisonEmbedder: TextEmbedder, @unchecked Sendable {
             if case .document(_, let text) = input, text.contains("POISON") { throw FakeEmbedder.FakeError.boom }
         }
         return try await base.embed(inputs)
+    }
+}
+
+extension FileEngineTests {
+    @Test func retriesAreBoundedAndAForcedRebuildCanRecover() async throws {
+        let folder = try TempFolder()
+        defer { folder.cleanUp() }
+        try folder.writePNG("retry.png")
+        let store = try IndexStore.inMemory(), text = FakeEmbedder()
+        let images = FakeImageEmbedder(text: text, label: "mountain", failAll: true)
+        let engine = await makeEngine(store, text, images: images, folder: folder)
+        await engine.setImageRetryInterval(.zero)
+        for _ in 0..<7 { await engine.refresh() }
+        #expect(images.calls == 3)
+        #expect(try store.fileIndexRecords(modelKey: text.info.cacheKey).values.first?.retryCount == 3)
+        images.failAll = false
+        try await engine.reindexFiles(in: folder.url)
+        #expect(images.calls == 4)
+        #expect(await engine.fileChunkCount == 1)
+        #expect(try store.fileIndexRecords(modelKey: text.info.cacheKey).values.first?.retryable == false)
+    }
+
+    @Test func retryDeadlineSurvivesReopeningTheStore() async throws {
+        let folder = try TempFolder(), clock = TestClock()
+        defer { folder.cleanUp() }
+        try folder.writePNG("retry.png")
+        try folder.writePNG("normal.png")
+        let url = folder.path("index.sqlite"), text = FakeEmbedder()
+        let store = try IndexStore(url: url)
+        let images = FakeImageEmbedder(text: text, label: "mountain", failFirst: 1)
+        let first = await makeEngine(store, text, images: images, folder: folder, now: { clock.now() })
+        await first.refresh()
+        let reopened = try IndexStore(url: url)
+        let next = await makeEngine(reopened, text, images: images, folder: folder, now: { clock.now() })
+        await next.loadFromStore()
+        await next.refresh()
+        #expect(images.calls == 2)
+        clock.advance(601)
+        await next.refresh()
+        #expect(images.calls == 3)
+        #expect(await next.fileChunkCount == 2)
+    }
+
+    @Test func unreadablePDFAwaitsExplicitRebuildInsteadOfRetryingForever() async throws {
+        let folder = try TempFolder()
+        defer { folder.cleanUp() }
+        try Data("not a PDF".utf8).write(to: folder.path("broken.pdf"))
+        let store = try IndexStore.inMemory(), text = FakeEmbedder()
+        let engine = await makeEngine(store, text, images: nil, folder: folder)
+        let first = await engine.refreshWithStats()
+        let second = await engine.refreshWithStats()
+        #expect(first.fileErrors == 1 && second.filesIndexed == 0)
+        #expect(try store.fileIndexRecords(modelKey: text.info.cacheKey).values.first?.retryable == false)
+        try await engine.reindexFiles(in: folder.url)
+        #expect(await engine.fileIndexSummary().folders.first?.failed == 1)
+    }
+}
+
+extension FileEngineTests {
+    @Test func allFailedTextFilesStillHavePersistentRetryState() async throws {
+        let folder = try TempFolder()
+        defer { folder.cleanUp() }
+        try folder.writePDF("bad.pdf", pages: ["POISON content that currently cannot be embedded"])
+        let store = try IndexStore.inMemory(), embedder = PoisonEmbedder()
+        let engine = await makeEngine(store, embedder, images: nil, folder: folder)
+        let stats = await engine.refreshWithStats()
+        #expect(stats.filesIndexed == 1)
+        #expect(try store.fileIndexRecords(modelKey: embedder.info.cacheKey).values.first?.retryable == true)
+    }
+
+    @Test func aTransientImageRetriesWithoutAnotherFileEvent() async throws {
+        let folder = try TempFolder()
+        defer { folder.cleanUp() }
+        try folder.writePNG("retry.png")
+        let store = try IndexStore.inMemory(), text = FakeEmbedder()
+        let images = FakeImageEmbedder(text: text, label: "mountain", failFirst: 1)
+        let engine = await makeEngine(store, text, images: images, folder: folder)
+        await engine.setImageRetryInterval(.milliseconds(50))
+        await engine.refresh()
+        let deadline = ContinuousClock.now + .seconds(4)
+        while await engine.fileChunkCount == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await engine.fileChunkCount == 1)
+        #expect(images.calls == 2)
+    }
+}
+
+extension FileEngineTests {
+    @Test func forceReindexUpdatesAllAliasesOfASharedFileVersion() async throws {
+        let folder = try TempFolder()
+        defer { folder.cleanUp() }
+        try folder.writePNG("one/shared.png")
+        try folder.writePNG("two/shared.png")
+        for name in ["one/shared.png", "two/shared.png"] {
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)], ofItemAtPath: folder.path(name).path)
+        }
+        let store = try IndexStore.inMemory(), text = FakeEmbedder()
+        let first = FakeImageEmbedder(text: text, label: "mountain")
+        let engine = await makeEngine(store, text, images: first, folder: folder)
+        await engine.refresh()
+        #expect(first.calls == 1)
+        await engine.setImageEmbedder(FakeImageEmbedder(text: text, label: "beach"))
+        try await engine.reindexFiles(in: folder.path("one"))
+        let found = try await engine.fullSearch("beach", limit: 50).filter { $0.item.kind == .file }
+        #expect(found.count == 2)
+        #expect(found.allSatisfy { ($0.breakdown.cosine ?? 0) > 0.99 })
     }
 }

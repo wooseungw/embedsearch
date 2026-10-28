@@ -25,8 +25,13 @@ public struct MLXEmbedderConfiguration: Sendable {
     /// nil leaves MLX's setting alone. MLX's own default is the whole memory limit, and padded
     /// batches of varying shapes rarely reuse freed buffers, so without a cap indexing grew past
     /// 12 GB. Indexing 934 items on an M3 Pro peaked at 3.2 GB with 256 MB (3.4 GB with 512 MB,
-    /// 3.0 GB with 0) at unchanged throughput and query latency.
+    /// 3.0 GB with 0). A smaller cap costs this model throughput: 64 MB or 0 made batches of
+    /// 256–512 tokens ~7% slower and a 64-token query ~1 ms slower (`bench`, M3 Pro).
     public var cacheLimit: Int?
+    /// The same cap, applied when the vision model (`MLXImageEmbedder`) loads. Images of every
+    /// size reuse no buffers: indexing 36 files took the same time with 256, 64 and 0 MB and
+    /// peaked ~150 MB lower with 64 MB (~200 MB with 0, at 1.7× the system time).
+    public var visionCacheLimit: Int?
 
     public init(
         modelID: String = EmbedderRegistry.embeddinggemma2.name,
@@ -34,7 +39,8 @@ public struct MLXEmbedderConfiguration: Sendable {
         maxTokens: Int = 2048,
         batchSize: Int = 32,
         precision: MLXEmbedderPrecision = .float32,
-        cacheLimit: Int? = 256 * 1024 * 1024
+        cacheLimit: Int? = 256 * 1024 * 1024,
+        visionCacheLimit: Int? = 64 * 1024 * 1024
     ) {
         self.modelID = modelID
         self.dimensions = dimensions
@@ -42,6 +48,7 @@ public struct MLXEmbedderConfiguration: Sendable {
         self.batchSize = batchSize
         self.precision = precision
         self.cacheLimit = cacheLimit
+        self.visionCacheLimit = visionCacheLimit
     }
 
     public static let `default` = MLXEmbedderConfiguration()

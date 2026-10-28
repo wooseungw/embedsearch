@@ -18,6 +18,12 @@ final class AppSettings {
     var searchFolders: [String] {
         didSet { defaults.set(searchFolders, forKey: Keys.searchFolders) }
     }
+    var searchHistoryEnabled: Bool {
+        didSet { defaults.set(searchHistoryEnabled, forKey: "searchHistoryEnabled") }
+    }
+    var searchHistoryRetentionDays: Int {
+        didSet { defaults.set(searchHistoryRetentionDays, forKey: "searchHistoryRetentionDays") }
+    }
     /// Keep the last copied texts (in memory only, `ClipboardHistory`).
     var clipboardHistoryEnabled: Bool {
         didSet { defaults.set(clipboardHistoryEnabled, forKey: Keys.clipboardHistoryEnabled) }
@@ -57,6 +63,9 @@ final class AppSettings {
             ? min(max(width, PanelLayout.panelWidthRange.lowerBound), PanelLayout.panelWidthRange.upperBound)
             : PanelLayout.defaultPanelWidth
         searchFolders = defaults.stringArray(forKey: Keys.searchFolders) ?? []
+        searchHistoryEnabled = defaults.object(forKey: "searchHistoryEnabled") as? Bool ?? true
+        let days = defaults.integer(forKey: "searchHistoryRetentionDays")
+        searchHistoryRetentionDays = [7, 30, 90, 365].contains(days) ? days : 30
         clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? true
         if let data = defaults.data(forKey: Keys.clipboardHotKey),
            let combo = try? JSONDecoder().decode(KeyCombo.self, from: data) {
