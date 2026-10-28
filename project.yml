@@ -54,9 +54,9 @@ targets:
       properties:
         CFBundleDisplayName: EmbedSearch
         CFBundleName: EmbedSearch
-        CFBundleShortVersionString: "0.3.0"
+        CFBundleShortVersionString: "0.3.1"
         # Sparkle compares this, not the short version: raise it with every release.
-        CFBundleVersion: "3"
+        CFBundleVersion: "4"
         CFBundleDevelopmentRegion: ko
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "15.0"
@@ -96,6 +96,9 @@ targets:
       - path: App/Tests
       - path: App/Search/QueryController.swift
       - path: App/Search/EngineStateText.swift
+      - path: App/Actions/Shell.swift
+      - path: App/Settings/AppSettings.swift
+      - path: App/Hotkey/KeyCombo.swift
       - path: App/Panel/LauncherFieldEditor.swift
       - path: App/Panel/PanelLayout.swift
       - path: App/Preview/PageMatch.swift

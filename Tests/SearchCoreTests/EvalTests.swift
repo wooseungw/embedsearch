@@ -4,6 +4,31 @@ import Testing
 
 @Suite("Evaluation")
 struct EvalTests {
+    @Test func semanticFallbackIsReportedAsAnEvaluationFailure() async throws {
+        let engine = SearchEngine(store: try IndexStore.inMemory(), embedder: nil, sources: [StaticItemSource(items: fixtureItems)])
+        await engine.refresh()
+        let query = EvalQuery(q: "계산기", lang: "ko", type: "exact", expect: [EvalMatcher(id: fixtureItems[0].id)])
+        let report = await Evaluator.run(engine: engine, queries: [query], mode: .hybrid)
+        #expect(report.outcomes[0].error != nil)
+        #expect(report.outcomes[0].rank == nil)
+    }
+    @Test func executionErrorsAreNotReportedAsOrdinaryEmptyResults() async {
+        let query = EvalQuery(q: "failure", lang: "en", type: "exact", expect: [EvalMatcher(id: "x")])
+        let failed = await Evaluator.run([query], mode: .hybrid) { _, _ in throw FakeEmbedder.FakeError.boom }
+        let empty = await Evaluator.run([query], mode: .hybrid) { _, _ in [] }
+        #expect(failed.outcomes[0].error != nil)
+        #expect(empty.outcomes[0].error == nil)
+    }
+
+    @Test func aNegativeQuerySucceedsOnlyWhenNoResultsAreReturned() async {
+        let query = EvalQuery(q: "absent", lang: "en", type: "negative", expect: [], expectNone: true)
+        let empty = await Evaluator.run([query], mode: .hybrid) { _, _ in [] }
+        let falsePositive = await Evaluator.run([query], mode: .hybrid) { _, _ in
+            [SearchResult(item: fixtureItems[0], score: 1, signals: [.semantic], breakdown: ScoreBreakdown())]
+        }
+        #expect(empty.overall.success1 == 1)
+        #expect(falsePositive.overall.success1 == 0)
+    }
     @Test func matcherSemantics() {
         let calc = fixtureItems[0]
         #expect(EvalMatcher(id: "app:com.apple.calculator").matches(calc))

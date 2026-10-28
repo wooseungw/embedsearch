@@ -29,7 +29,7 @@ public final class MLXImageEmbedder: ImageEmbedder {
 
     /// Uses the Hugging Face cache (downloading only what is missing) or a local directory.
     public static func load(_ configuration: MLXEmbedderConfiguration = .default) async throws -> MLXImageEmbedder {
-        if let cacheLimit = configuration.cacheLimit { Memory.cacheLimit = cacheLimit }
+        if let cacheLimit = configuration.visionCacheLimit { Memory.cacheLimit = cacheLimit }
         let directory: URL
         if configuration.modelID.hasPrefix("/") || configuration.modelID.hasPrefix("~") {
             directory = URL(filePath: (configuration.modelID as NSString).expandingTildeInPath)

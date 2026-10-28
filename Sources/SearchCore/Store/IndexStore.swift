@@ -256,6 +256,15 @@ public final class IndexStore: Sendable {
                 WHERE seq = 0 AND fileHash IN (SELECT fileHash FROM fileChunk WHERE seq = 0 AND kind = \(ChunkKind.card.rawValue));
                 """)
         }
+        m.registerMigration("v9-file-retry") { db in
+            try db.execute(sql: """
+                ALTER TABLE fileIndexed ADD COLUMN retryable INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE fileIndexed ADD COLUMN retryCount INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE fileIndexed ADD COLUMN retryAfter DOUBLE;
+                UPDATE fileIndexed SET retryable = 1, partial = 1, retryAfter = 0
+                WHERE error IN ('image could not be embedded', 'text could not be embedded');
+                """)
+        }
         return m
     }
 
@@ -599,11 +608,14 @@ public final class IndexStore: Sendable {
         try db.read { db in
             var out: [String: FileIndexRecord] = [:]
             guard let model = try Self.modelID(db, modelKey, create: false) else { return out }
-            let rows = try Row.fetchCursor(db, sql: "SELECT fileHash, chunks, partial, error FROM fileIndexed WHERE modelId = ?",
+            let rows = try Row.fetchCursor(db, sql: "SELECT fileHash, chunks, partial, error, retryable, retryCount, retryAfter FROM fileIndexed WHERE modelId = ?",
                                            arguments: [model])
             while let row = try rows.next() {
                 guard let hash = Self.hashString(row[0]) else { continue }
-                out[hash] = FileIndexRecord(chunks: row[1], partial: row[2], error: row[3])
+                let retryAfter: Double? = row[6]
+                out[hash] = FileIndexRecord(chunks: row[1], partial: row[2], error: row[3],
+                                           retryable: row[4], retryCount: row[5],
+                                           retryAfter: retryAfter.map(Date.init(timeIntervalSince1970:)))
             }
             return out
         }
@@ -648,8 +660,8 @@ public final class IndexStore: Sendable {
                 INSERT INTO fileChunk (modelId, fileHash, seq, kind, hub, vector, page) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """)
             let mark = try db.cachedStatement(sql: """
-                INSERT OR REPLACE INTO fileIndexed (modelId, fileHash, chunks, partial, error, indexedAt, hasText)
-                VALUES (?, ?, ?, ?, ?, ?, 1)
+                INSERT OR REPLACE INTO fileIndexed (modelId, fileHash, chunks, partial, error, indexedAt, hasText, retryable, retryCount, retryAfter)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """)
             let hashes = files.map { Self.hashValue($0.hash) }
             try Self.clearTexts(db, hashes)
@@ -660,7 +672,8 @@ public final class IndexStore: Sendable {
                                                    Self.float16Data(chunk.vector), chunk.page])
                 }
                 try mark.execute(arguments: [model, hash, file.record.chunks, file.record.partial, file.record.error,
-                                             now.timeIntervalSince1970])
+                                             now.timeIntervalSince1970, file.record.retryable, file.record.retryCount,
+                                             file.record.retryAfter?.timeIntervalSince1970])
             }
             try Self.addTexts(db, hashes, rows)
         }
@@ -783,6 +796,19 @@ public final class IndexStore: Sendable {
         }
         if removed + textsRemoved > 0 { try reclaimSpace() }
         return removed
+    }
+
+    /// Invalidates selected file versions across models, including their keyword rows.
+    public func invalidateFiles(hashes: Set<String>) throws {
+        guard !hashes.isEmpty else { return }
+        let values = Set(hashes.map(Self.hashValue))
+        try db.write { db in
+            _ = try Self.deleteTexts(db) { values.contains($0) }
+            for hash in values {
+                try db.execute(sql: "DELETE FROM fileChunk WHERE fileHash = ?", arguments: [hash])
+                try db.execute(sql: "DELETE FROM fileIndexed WHERE fileHash = ?", arguments: [hash])
+            }
+        }
     }
 
     /// Bytes of stored file-chunk vectors (all models).
@@ -1010,6 +1036,15 @@ public final class IndexStore: Sendable {
         }
     }
 
+    /// Removes expired usage, query memory and query vectors without touching the item index.
+    public func pruneHistory(before cutoff: Date) throws {
+        try db.write { db in
+            for table in ["usage", "queryMemory", "queryVector"] {
+                try db.execute(sql: "DELETE FROM \(table) WHERE lastUsed < ?", arguments: [cutoff.timeIntervalSince1970])
+            }
+        }
+    }
+
     /// Forgets all usage, query memory and remembered query vectors (items and embeddings stay).
     public func resetUsage() throws {
         try db.write { db in
@@ -1024,11 +1059,22 @@ public struct FileIndexRecord: Sendable, Equatable {
     public var chunks: Int
     public var partial: Bool
     public var error: String?
+    public var retryable: Bool
+    public var retryCount: Int
+    public var retryAfter: Date?
 
-    public init(chunks: Int, partial: Bool = false, error: String? = nil) {
+    public init(chunks: Int, partial: Bool = false, error: String? = nil,
+                retryable: Bool = false, retryCount: Int = 0, retryAfter: Date? = nil) {
         self.chunks = chunks
         self.partial = partial
         self.error = error
+        self.retryable = retryable
+        self.retryCount = retryCount
+        self.retryAfter = retryAfter
+    }
+
+    public func shouldRetry(at now: Date) -> Bool {
+        retryable && retryCount < 3 && (retryAfter.map { $0 <= now } ?? true)
     }
 }
 

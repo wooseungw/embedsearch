@@ -49,6 +49,7 @@ public struct EvalQuery: Codable, Sendable, Hashable {
     public var type: String
     public var expect: [EvalMatcher]
     public var note: String?
+    public var expectNone: Bool? = nil
 
     public func isRelevant(_ item: SearchItem) -> Bool { expect.contains { $0.matches(item) } }
 }
@@ -95,9 +96,11 @@ public enum EvalSet {
 
 public enum EvalError: Error, CustomStringConvertible {
     case badLine(Int, String)
+    case degradedSemanticSearch(String)
     public var description: String {
         switch self {
         case .badLine(let n, let e): "eval set line \(n): \(e)"
+        case .degradedSemanticSearch(let reason): "semantic evaluation unavailable: \(reason)"
         }
     }
 }
@@ -108,6 +111,7 @@ public struct EvalOutcome: Sendable {
     public let rank: Int?
     public let top: [SearchResult]
     public let latency: TimeInterval
+    public var error: String? = nil
 }
 
 public struct EvalMetrics: Sendable, Equatable {
@@ -161,16 +165,27 @@ public enum Evaluator {
         var outcomes: [EvalOutcome] = []
         for q in queries {
             let start = Date()
-            let results = (try? await search(q.q, mode)) ?? []
+            let results: [SearchResult]
+            var error: String?
+            do { results = try await search(q.q, mode) }
+            catch let failure { results = []; error = String(describing: failure) }
             let latency = Date().timeIntervalSince(start)
-            let rank = results.prefix(cutoff).firstIndex { q.isRelevant($0.item) }.map { $0 + 1 }
-            outcomes.append(EvalOutcome(query: q, rank: rank, top: Array(results.prefix(5)), latency: latency))
+            let rank = q.expectNone == true
+                ? (results.isEmpty && error == nil ? 1 : nil)
+                : results.prefix(cutoff).firstIndex { q.isRelevant($0.item) }.map { $0 + 1 }
+            outcomes.append(EvalOutcome(query: q, rank: rank, top: Array(results.prefix(5)), latency: latency, error: error))
         }
         return report(mode: mode, outcomes)
     }
 
     public static func run(engine: SearchEngine, queries: [EvalQuery], mode: SearchMode) async -> EvalReport {
-        await run(queries, mode: mode) { q, m in try await engine.search(q, mode: m, limit: cutoff) }
+        await run(queries, mode: mode) { q, m in
+            let results = try await engine.search(q, mode: m, limit: cutoff)
+            if m != .lexical, case .degraded(let reason) = await engine.currentState {
+                throw EvalError.degradedSemanticSearch(reason)
+            }
+            return results
+        }
     }
 
     static func report(mode: SearchMode, _ outcomes: [EvalOutcome]) -> EvalReport {

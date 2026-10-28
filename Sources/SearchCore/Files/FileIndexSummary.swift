@@ -11,6 +11,7 @@ public struct FileIndexSummary: Sendable, Equatable {
         /// Files whose content is embedded (`failed` of them had none that could be read).
         public var indexed = 0
         public var failed = 0
+        public var retrying = 0
         public var pending = 0
         public var chunks = 0
         /// Bytes this folder takes in the database now.
@@ -79,6 +80,7 @@ public struct FileIndexSummary: Sendable, Equatable {
             if let record = file.record {
                 entry.indexed += 1
                 if record.error != nil { entry.failed += 1 }
+                if record.retryable, record.retryCount < 3 { entry.retrying += 1 }
                 entry.chunks += record.chunks
                 entry.bytes += record.chunks * chunkBytes
                 entry.estimatedBytes += FileIndexCost.bytesPerFile + record.chunks * chunkBytes

@@ -64,6 +64,40 @@ public struct ChunkIndex: Sendable {
         IndexStore.float16Data(vector).withUnsafeBytes { append(itemID: itemID, kind: kind, hub: hub, page: page, float16: $0) }
     }
 
+    /// Makes room for `rows` more chunks before a bulk load. Growing one append at a time doubles
+    /// the arrays, which left 40 MiB reserved for 16 MB of vectors (measured).
+    public mutating func reserveCapacity(forAdditionalRows rows: Int) {
+        guard rows > 0 else { return }
+        let total = rowSlot.count + rows
+        halves.reserveCapacity(total * dimensions)
+        rowSlot.reserveCapacity(total)
+        rowKind.reserveCapacity(total)
+        rowHub.reserveCapacity(total)
+        rowPage.reserveCapacity(total)
+    }
+
+    /// Gives back the room that growth and removals left, once it is over an eighth of the rows
+    /// and 64 KB (malloc's size classes round small arrays up anyway).
+    public mutating func shrinkToFit() {
+        let spare = (halves.capacity - halves.count) * MemoryLayout<UInt16>.size
+        guard spare > halves.count * MemoryLayout<UInt16>.size / 8, spare >= 64 * 1024 else { return }
+        halves = Self.exactCopy(halves)
+        rowSlot = Self.exactCopy(rowSlot)
+        rowKind = Self.exactCopy(rowKind)
+        rowHub = Self.exactCopy(rowHub)
+        rowPage = Self.exactCopy(rowPage)
+    }
+
+    private static func exactCopy<T>(_ array: [T]) -> [T] {
+        var copy: [T] = []
+        copy.reserveCapacity(array.count)
+        copy.append(contentsOf: array)
+        return copy
+    }
+
+    /// Bytes reserved for the vectors (tests).
+    var vectorCapacityBytes: Int { halves.capacity * MemoryLayout<UInt16>.size }
+
     private mutating func slot(for itemID: String) -> Int32 {
         if let s = slotOf[itemID] { return s }
         let s = Int32(slotIDs.count)

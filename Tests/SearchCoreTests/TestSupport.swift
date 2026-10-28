@@ -96,3 +96,10 @@ final class TempDir {
 }
 
 let liveSystem = FileManager.default.fileExists(atPath: "/System/Library/ExtensionKit/Extensions")
+
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date = Date(timeIntervalSince1970: 1_800_000_000)
+    func now() -> Date { lock.withLock { date } }
+    func advance(_ seconds: TimeInterval) { lock.withLock { date.addTimeInterval(seconds) } }
+}

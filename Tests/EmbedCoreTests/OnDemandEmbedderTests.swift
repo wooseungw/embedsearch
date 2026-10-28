@@ -173,4 +173,97 @@ struct OnDemandEmbedderTests {
         await #expect(throws: OnDemandEmbedderError.self) { try await embedder.embed([.query("a")]) }
         #expect(await embedder.isLoaded == false)
     }
+
+    @Test func useIfLoadedNeverLoads() async throws {
+        let loads = Counter()
+        let embedder = makeEmbedder(idle: .seconds(60), loadDelay: .milliseconds(50), loads: loads)
+        #expect(try await embedder.model.useIfLoaded { _ in 1 } == nil)
+        #expect(loads.count == 0)
+        await embedder.prepare()  // loading: waits for that load
+        #expect(try await embedder.model.useIfLoaded { _ in 1 } == 1)
+        #expect(try await embedder.model.useIfLoaded { _ in 2 } == 2)
+        #expect(loads.count == 1)
+    }
+}
+
+/// A vision model stand-in: `[0, 1]` per text, so tests can tell which model embedded it.
+private final class FakeImageEmbedder: ImageEmbedder, Sendable {
+    let info: EmbeddingModelInfo
+    init(info: EmbeddingModelInfo = fakeInfo) { self.info = info }
+    func embed(_ inputs: [EmbeddingInput]) async throws -> [[Float]] { inputs.map { _ in [0, 1] } }
+    func embed(images: [ImageInput]) async throws -> [[Float]] { images.map { _ in [0, 1] } }
+}
+
+private struct VisionLoadFailed: Error {}
+
+private func makeVision(info: EmbeddingModelInfo = fakeInfo, fails: Bool = false, loadDelay: Duration = .zero,
+                        loads: Counter = Counter()) -> OnDemandImageEmbedder {
+    OnDemandImageEmbedder(info: info, idleTimeout: .seconds(60), load: {
+        loads.increment()
+        if loadDelay > .zero { try await Task.sleep(for: loadDelay) }
+        if fails { throw VisionLoadFailed() }
+        return FakeImageEmbedder(info: info)
+    })
+}
+
+private func makeEmbedder(standIn: OnDemandImageEmbedder, loads: Counter) -> OnDemandEmbedder {
+    OnDemandEmbedder(info: fakeInfo, idleTimeout: .seconds(60), standIn: standIn, load: {
+        loads.increment()
+        return FakeEmbedder()
+    })
+}
+
+@Suite("OnDemandEmbedder stand-in")
+struct OnDemandEmbedderStandInTests {
+    @Test func unloadedStandInIsNotLoadedForText() async throws {
+        let textLoads = Counter(), visionLoads = Counter()
+        let vision = makeVision(loads: visionLoads)
+        let embedder = makeEmbedder(standIn: vision, loads: textLoads)
+        #expect(try await embedder.embed([.query("a")]) == [[1, 0]])
+        #expect(textLoads.count == 1)
+        #expect(visionLoads.count == 0)
+    }
+
+    @Test func loadedStandInServesWhileTextModelIsUnloaded() async throws {
+        let textLoads = Counter()
+        let vision = makeVision()
+        _ = try await vision.embed([.query("index")])  // the vision model is resident
+        let embedder = makeEmbedder(standIn: vision, loads: textLoads)
+        #expect(try await embedder.embed([.query("a"), .document(title: nil, text: "b")]) == [[0, 1], [0, 1]])
+        #expect(textLoads.count == 0)
+        #expect(await embedder.isLoaded == false)
+
+        await vision.unload()
+        #expect(try await embedder.embed([.query("a")]) == [[1, 0]])
+        #expect(textLoads.count == 1)
+    }
+
+    @Test func loadedTextModelGoesFirst() async throws {
+        let vision = makeVision()
+        _ = try await vision.embed([.query("index")])
+        let embedder = makeEmbedder(standIn: vision, loads: Counter())
+        await embedder.prepare()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(try await embedder.embed([.query("a")]) == [[1, 0]])
+    }
+
+    @Test func failingStandInFallsBackToTextModel() async throws {
+        let textLoads = Counter()
+        let vision = makeVision(fails: true, loadDelay: .milliseconds(100))
+        _ = Task { try? await vision.embed([.query("index")]) }  // starts the vision load
+        try await Task.sleep(for: .milliseconds(20))
+        let embedder = makeEmbedder(standIn: vision, loads: textLoads)
+        // Waits for the vision load, which fails: the text model does it.
+        #expect(try await embedder.embed([.query("a")]) == [[1, 0]])
+        #expect(textLoads.count == 1)
+    }
+
+    @Test func standInOfAnotherModelIsIgnored() async throws {
+        let other = EmbeddingModelInfo(modelID: "fake", revision: "r2", dimensions: 2)
+        let vision = makeVision(info: other)
+        _ = try await vision.embed([.query("index")])
+        let embedder = makeEmbedder(standIn: vision, loads: Counter())
+        #expect(embedder.standIn == nil)
+        #expect(try await embedder.embed([.query("a")]) == [[1, 0]])
+    }
 }

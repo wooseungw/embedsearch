@@ -15,6 +15,9 @@ final class SettingsNavigation {
 /// Settings in tabs, each short enough to fit any screen (one long form ran past the bottom of a
 /// 14" display, hiding the sections at its end).
 struct SettingsView: View {
+    @State private var confirmingHistoryDeletion = false
+    @State private var historyNotice: String?
+    @State private var reindexing = false
     @Bindable var settings: AppSettings
     @Bindable var navigation: SettingsNavigation
     let hotKeys: HotKeyController
@@ -59,6 +62,20 @@ struct SettingsView: View {
         .padding(.top, 6)
         .frame(width: Self.size.width, height: Self.size.height)
         .onAppear { launchAtLogin.refresh() }
+        .onChange(of: settings.searchHistoryEnabled) { _, _ in applyHistoryPolicy() }
+        .onChange(of: settings.searchHistoryRetentionDays) { _, _ in applyHistoryPolicy() }
+        .confirmationDialog("모든 검색 기록을 삭제할까요?", isPresented: $confirmingHistoryDeletion) {
+            Button("검색 기록 삭제", role: .destructive) {
+                Task {
+                    do {
+                        try await AppServices.runtime?.engine.clearHistory()
+                        historyNotice = "검색 기록과 검색 캐시를 삭제했습니다."
+                    } catch { historyNotice = "삭제하지 못했습니다: \(error.localizedDescription)" }
+                }
+            }
+        } message: {
+            Text("검색어와 실행 이력, 검색 속도를 위한 캐시를 지웁니다. 파일 색인은 유지됩니다.")
+        }
     }
 
     private var hotKeySection: some View {
@@ -145,10 +162,45 @@ struct SettingsView: View {
             }
             LabeledContent("검색 서비스", value: AppServices.serviceDescription)
             LabeledContent("모델", value: AppServices.modelDescription)
+            Toggle("검색 기록 저장 및 개인화", isOn: $settings.searchHistoryEnabled)
+                .disabled(AppServices.runtime == nil)
+            Picker("기록 보관 기간", selection: $settings.searchHistoryRetentionDays) {
+                Text("7일").tag(7)
+                Text("30일").tag(30)
+                Text("90일").tag(90)
+                Text("1년").tag(365)
+            }
+            .disabled(AppServices.runtime == nil)
+            Text("선택한 검색어와 실행 항목을 이 Mac에 보관해 자주 찾는 결과를 먼저 보여줍니다. 끄면 새 기록과 검색 캐시를 저장하지 않습니다. 기존 기록은 보관 기간에 따라 지우거나 아래에서 모두 삭제할 수 있습니다.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("모든 검색 기록 삭제…") { confirmingHistoryDeletion = true }
+                .disabled(AppServices.runtime == nil)
+            if let historyNotice { Text(historyNotice).font(.caption).foregroundStyle(.secondary) }
             HStack {
                 Spacer()
-                Button("다시 색인") { query.refreshIndex() }
+                Button("다시 색인") {
+                    guard let runtime = AppServices.runtime else { query.refreshIndex(); return }
+                    reindexing = true
+                    Task {
+                        defer { reindexing = false }
+                        do {
+                            try await runtime.reindexFiles()
+                            historyNotice = "파일을 다시 색인했습니다."
+                        } catch { historyNotice = "다시 색인하지 못했습니다: \(error.localizedDescription)" }
+                    }
+                }.disabled(reindexing)
             }
+        }
+    }
+
+    private func applyHistoryPolicy() {
+        guard let runtime = AppServices.runtime else { return }
+        let enabled = settings.searchHistoryEnabled, days = settings.searchHistoryRetentionDays
+        Task {
+            do {
+                try await runtime.engine.setHistoryPolicy(enabled: enabled, retentionDays: days)
+                historyNotice = nil
+            } catch { historyNotice = "기록 설정을 적용하지 못했습니다: \(error.localizedDescription)" }
         }
     }
 

@@ -6,7 +6,7 @@ import Foundation
 ///   + cosineWeight·max(0, cosine − cosineFloor) + frecency + query memory + kind prior + intent boost,
 ///   and for files RRF(content match rank) and RRF(keyword match rank) with their margins.
 /// RRF terms are ~1/61 ≈ 0.016 at rank 1, so the other weights are on that scale.
-public struct RankingConfig: Sendable, Equatable {
+public struct RankingConfig: Sendable, Equatable, Codable {
     public var rrfK: Double = 60
     public var lexicalRRFWeight: Double = 1.0
     public var semanticRRFWeight: Double = 1.0
@@ -14,6 +14,9 @@ public struct RankingConfig: Sendable, Equatable {
     public var lexicalScoreWeight: Double = 0.02
     public var cosineWeight: Double = 0.0
     public var cosineFloor: Double = 0.3
+    /// Weak fuzzy evidence must not swamp a clear semantic match. Strong names and initials keep fixed fusion.
+    public var adaptiveFusion: Bool = true
+    public var confidentLexicalScore: Double = 0.75
     /// Items found only by the embedding must reach this cosine to be shown.
     public var minSemanticCosine: Double = 0.35
     public var lexicalCandidates: Int = 50
