@@ -54,9 +54,9 @@ targets:
       properties:
         CFBundleDisplayName: EmbedSearch
         CFBundleName: EmbedSearch
-        CFBundleShortVersionString: "0.3.1"
+        CFBundleShortVersionString: "0.3.3"
         # Sparkle compares this, not the short version: raise it with every release.
-        CFBundleVersion: "4"
+        CFBundleVersion: "6"
         CFBundleDevelopmentRegion: ko
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "15.0"

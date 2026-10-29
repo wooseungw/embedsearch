@@ -10,6 +10,7 @@ struct ClipboardSettingsView: View {
         Form {
             Section("클립보드 기록") {
                 Toggle("복사한 텍스트 기록", isOn: Binding(get: { settings.clipboardHistoryEnabled }, set: setEnabled))
+                    .toggleStyle(SettingsToggleStyle())
                 Text("""
                     최근 \(ClipboardHistory.capacity)개를 이 Mac의 메모리에만 보관합니다. 디스크에 저장하지 않으므로 앱을 끄면 사라집니다. \
                     같은 텍스트를 다시 복사하거나 기록에서 고르면 새로 쌓이지 않고 목록 맨 위(최신)로 올라갑니다. \

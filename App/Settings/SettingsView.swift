@@ -142,6 +142,7 @@ struct SettingsView: View {
         Section("일반") {
             Toggle("로그인 시 실행", isOn: Binding(get: { launchAtLogin.isEnabled },
                                               set: { launchAtLogin.setEnabled($0) }))
+                .toggleStyle(SettingsToggleStyle())
             LabeledContent("상태") {
                 Text(launchAtLogin.statusText).foregroundStyle(.secondary)
             }
@@ -163,6 +164,7 @@ struct SettingsView: View {
             LabeledContent("검색 서비스", value: AppServices.serviceDescription)
             LabeledContent("모델", value: AppServices.modelDescription)
             Toggle("검색 기록 저장 및 개인화", isOn: $settings.searchHistoryEnabled)
+                .toggleStyle(SettingsToggleStyle())
                 .disabled(AppServices.runtime == nil)
             Picker("기록 보관 기간", selection: $settings.searchHistoryRetentionDays) {
                 Text("7일").tag(7)
@@ -207,6 +209,7 @@ struct SettingsView: View {
     private var updateSection: some View {
         Section("업데이트") {
             Toggle("자동 업데이트", isOn: Binding(get: { updater.isAutomatic }, set: { updater.setAutomatic($0) }))
+                .toggleStyle(SettingsToggleStyle())
             Text("하루 한 번 새 버전을 확인해 받아 두고, 앱을 종료할 때 설치합니다. 받아 둔 업데이트가 설치되지 않은 채로 있으면 7일마다 한 번 묻습니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
